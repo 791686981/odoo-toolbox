@@ -1,0 +1,10 @@
+apps/web/node_modules
+apps/web/dist
+apps/server/.venv
+apps/server/.pytest_cache
+apps/server/odoo_toolbox_server.egg-info
+apps/server/__pycache__
+storage/uploads
+storage/outputs
+.DS_Store
+.git

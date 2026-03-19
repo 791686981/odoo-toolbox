@@ -1,0 +1,47 @@
+# Local environment
+.env
+.env.*
+!.env.example
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.coverage
+.coverage.*
+htmlcov/
+.venv/
+apps/server/.venv/
+apps/server/.pytest_cache/
+apps/server/odoo_toolbox_server.egg-info/
+
+# Web
+apps/web/node_modules/
+apps/web/dist/
+apps/web/coverage/
+apps/web/tsconfig.tsbuildinfo
+
+# Runtime storage
+storage/uploads/*
+storage/outputs/*
+!storage/uploads/.gitkeep
+!storage/outputs/.gitkeep
+
+docs/plans

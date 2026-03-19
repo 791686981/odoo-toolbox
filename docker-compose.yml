@@ -1,0 +1,105 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: toolbox
+      POSTGRES_USER: toolbox
+      POSTGRES_PASSWORD: toolbox
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U toolbox -d toolbox"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    environment:
+      TOOLBOX_SECRET_KEY: ${TOOLBOX_SECRET_KEY:-replace-this-secret}
+      TOOLBOX_DEBUG: ${TOOLBOX_DEBUG:-false}
+      TOOLBOX_OPENAI_BASE_URL: ${TOOLBOX_OPENAI_BASE_URL:-https://api.openai.com/v1}
+      TOOLBOX_OPENAI_API_KEY: ${TOOLBOX_OPENAI_API_KEY:-}
+      TOOLBOX_OPENAI_TRANSLATION_MODEL: ${TOOLBOX_OPENAI_TRANSLATION_MODEL:-gpt-4.1-mini}
+      TOOLBOX_DATABASE_URL: ${TOOLBOX_DATABASE_URL:-postgresql+psycopg://toolbox:toolbox@postgres:5432/toolbox}
+      TOOLBOX_REDIS_URL: ${TOOLBOX_REDIS_URL:-redis://redis:6379/0}
+      TOOLBOX_UPLOAD_DIR: /app/storage/uploads
+      TOOLBOX_OUTPUT_DIR: /app/storage/outputs
+      TOOLBOX_EAGER_TASKS: "false"
+      TOOLBOX_ADMIN_USERNAME: ${TOOLBOX_ADMIN_USERNAME:-admin}
+      TOOLBOX_ADMIN_PASSWORD: ${TOOLBOX_ADMIN_PASSWORD:-admin123456}
+      TOOLBOX_DEFAULT_SOURCE_LANGUAGE: ${TOOLBOX_DEFAULT_SOURCE_LANGUAGE:-en_US}
+      TOOLBOX_DEFAULT_TARGET_LANGUAGE: ${TOOLBOX_DEFAULT_TARGET_LANGUAGE:-zh_CN}
+      TOOLBOX_DEFAULT_CHUNK_SIZE: ${TOOLBOX_DEFAULT_CHUNK_SIZE:-20}
+      TOOLBOX_DEFAULT_CONCURRENCY: ${TOOLBOX_DEFAULT_CONCURRENCY:-2}
+      TOOLBOX_DEFAULT_OVERWRITE_EXISTING: ${TOOLBOX_DEFAULT_OVERWRITE_EXISTING:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./storage:/app/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/api/health >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    command: ["celery", "-A", "app.workers.celery_app.celery_app", "worker", "--loglevel=info"]
+    environment:
+      TOOLBOX_SECRET_KEY: ${TOOLBOX_SECRET_KEY:-replace-this-secret}
+      TOOLBOX_DEBUG: ${TOOLBOX_DEBUG:-false}
+      TOOLBOX_OPENAI_BASE_URL: ${TOOLBOX_OPENAI_BASE_URL:-https://api.openai.com/v1}
+      TOOLBOX_OPENAI_API_KEY: ${TOOLBOX_OPENAI_API_KEY:-}
+      TOOLBOX_OPENAI_TRANSLATION_MODEL: ${TOOLBOX_OPENAI_TRANSLATION_MODEL:-gpt-4.1-mini}
+      TOOLBOX_DATABASE_URL: ${TOOLBOX_DATABASE_URL:-postgresql+psycopg://toolbox:toolbox@postgres:5432/toolbox}
+      TOOLBOX_REDIS_URL: ${TOOLBOX_REDIS_URL:-redis://redis:6379/0}
+      TOOLBOX_UPLOAD_DIR: /app/storage/uploads
+      TOOLBOX_OUTPUT_DIR: /app/storage/outputs
+      TOOLBOX_EAGER_TASKS: "false"
+      TOOLBOX_ADMIN_USERNAME: ${TOOLBOX_ADMIN_USERNAME:-admin}
+      TOOLBOX_ADMIN_PASSWORD: ${TOOLBOX_ADMIN_PASSWORD:-admin123456}
+      TOOLBOX_DEFAULT_SOURCE_LANGUAGE: ${TOOLBOX_DEFAULT_SOURCE_LANGUAGE:-en_US}
+      TOOLBOX_DEFAULT_TARGET_LANGUAGE: ${TOOLBOX_DEFAULT_TARGET_LANGUAGE:-zh_CN}
+      TOOLBOX_DEFAULT_CHUNK_SIZE: ${TOOLBOX_DEFAULT_CHUNK_SIZE:-20}
+      TOOLBOX_DEFAULT_CONCURRENCY: ${TOOLBOX_DEFAULT_CONCURRENCY:-2}
+      TOOLBOX_DEFAULT_OVERWRITE_EXISTING: ${TOOLBOX_DEFAULT_OVERWRITE_EXISTING:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./storage:/app/storage
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+
+volumes:
+  postgres-data:
+  redis-data:

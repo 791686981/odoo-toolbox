@@ -1,0 +1,37 @@
+[project]
+name = "odoo-toolbox-server"
+version = "0.1.0"
+description = "Backend for Odoo Toolbox"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic>=1.14.0",
+  "celery[redis]>=5.4.0",
+  "fastapi>=0.115.0",
+  "httpx>=0.28.0",
+  "itsdangerous>=2.2.0",
+  "openai>=1.68.0",
+  "passlib[bcrypt]>=1.7.4",
+  "psycopg[binary]>=3.2.0",
+  "pydantic-settings>=2.7.0",
+  "python-dotenv>=1.0.1",
+  "python-multipart>=0.0.20",
+  "sqlalchemy>=2.0.36",
+  "uvicorn[standard]>=0.34.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.4",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
