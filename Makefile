@@ -74,7 +74,7 @@ docker-logs: ## 查看容器日志，可通过 SERVICE=api 指定服务
 	@$(COMPOSE) logs -f $(SERVICE)
 
 docker-health: ## 检查反代后的健康接口
-	@curl -fsS http://127.0.0.1:8080/api/health && echo
+	@curl -fsS http://127.0.0.1:8001/api/health && echo
 
 docker-config:
 	@$(COMPOSE) config

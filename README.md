@@ -53,8 +53,8 @@ docker compose up --build
 
 默认访问地址：
 
-- Web: [http://localhost:8080](http://localhost:8080)
-- API: [http://localhost:8080/api/health](http://localhost:8080/api/health)
+- Web: [http://localhost:8001](http://localhost:8001)
+- API: [http://localhost:8001/api/health](http://localhost:8001/api/health)
 
 默认登录账号来自环境变量：
 
@@ -85,6 +85,6 @@ make help
 - `make docker-up`
   使用 `.env` 中的真实 OpenAI 配置启动容器
 - `make docker-health`
-  检查 `http://127.0.0.1:8080/api/health`
+  检查 `http://127.0.0.1:8001/api/health`
 - `make docker-down`
   停止并清理容器
