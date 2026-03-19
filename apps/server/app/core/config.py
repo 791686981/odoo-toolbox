@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     openai_translation_model: str = "gpt-4.1-mini"
     openai_review_model: str = ""
     admin_username: str = "admin"
-    admin_password: str = "admin123456"
+    admin_password: str = ""
 
     upload_dir: Path = Path("./storage/uploads")
     output_dir: Path = Path("./storage/outputs")

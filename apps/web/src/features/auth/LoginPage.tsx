@@ -34,11 +34,7 @@ export function LoginPage() {
         <Typography.Paragraph className="login-copy">
           首版提供 CSV 翻译工作流，后续可以在相同框架下继续扩展其他 Odoo 开发工具。
         </Typography.Paragraph>
-        <Form<LoginFormValues>
-          layout="vertical"
-          initialValues={{ username: "admin", password: "admin123456" }}
-          onFinish={(values) => loginMutation.mutate(values)}
-        >
+        <Form<LoginFormValues> layout="vertical" onFinish={(values) => loginMutation.mutate(values)}>
           <Form.Item label="用户名" name="username" rules={[{ required: true, message: "请输入用户名" }]}>
             <Input size="large" />
           </Form.Item>

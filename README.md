@@ -44,7 +44,8 @@ npm run dev
 
 1. 复制 `.env.example` 为 `.env`
 2. 填写 `TOOLBOX_OPENAI_API_KEY`
-3. 启动：
+3. 显式填写 `TOOLBOX_ADMIN_PASSWORD`
+4. 启动：
 
 ```bash
 cd /Users/majianhang/Code/Playground/odoo-toolbox

@@ -20,7 +20,13 @@ from app.db.session import session_scope
 from app.models import SystemSetting, User
 
 
+def validate_runtime_settings() -> None:
+    if not settings.admin_password.strip():
+        raise RuntimeError("TOOLBOX_ADMIN_PASSWORD 未配置，请先在环境变量或 .env 中设置管理员密码。")
+
+
 def ensure_default_data() -> None:
+    validate_runtime_settings()
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
     settings.output_dir.mkdir(parents=True, exist_ok=True)
 
