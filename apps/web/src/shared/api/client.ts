@@ -1,4 +1,6 @@
 import type {
+  GettextContextDraft,
+  GettextProofreadPreview,
   GettextTranslationEntriesPage,
   GettextTranslationMode,
   GettextTranslationRun,
@@ -117,6 +119,15 @@ export const api = {
     request<GettextTranslationEntriesPage>(
       `/api/tools/gettext-translation/runs/${runId}/entries?page=${page}&page_size=${pageSize}`,
     ),
+  createGettextContextDraft: (payload: {
+    uploaded_file_id: string;
+    source_language: string;
+    target_language: string;
+  }) =>
+    request<GettextContextDraft>("/api/tools/gettext-translation/context-draft", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   createGettextJob: (payload: {
     uploaded_file_id: string;
     source_language: string;
@@ -141,6 +152,11 @@ export const api = {
     request(`/api/tools/gettext-translation/runs/${runId}/entries/${entryId}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
+    }),
+  proofreadGettextRun: (runId: string) =>
+    request<GettextProofreadPreview>(`/api/tools/gettext-translation/runs/${runId}/proofread-preview`, {
+      method: "POST",
+      body: JSON.stringify({}),
     }),
   exportGettextRun: (runId: string) =>
     request<{ file_id: string; filename: string }>(`/api/tools/gettext-translation/runs/${runId}/export`, {

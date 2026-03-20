@@ -21,14 +21,21 @@ from app.models import (
 from app.schemas.gettext_translation import (
     CreateGettextTranslationJobRequest,
     ExportGettextTranslationResponse,
+    GettextContextDraftRequest,
+    GettextContextDraftResponse,
+    GettextProofreadPreviewResponse,
+    GettextProofreadSuggestionResponse,
     GettextTranslationEntriesPage,
     GettextTranslationEntryResponse,
     GettextTranslationRunResponse,
     UpdateGettextTranslationEntryRequest,
 )
+from app.services.openai_service import openai_service
 from app.services.file_service import store_generated_file
+from app.tools.gettext_translation.context_builder import build_context_draft
 from app.tools.gettext_translation.exporter import export_gettext_file
 from app.tools.gettext_translation.parser import parse_gettext_file
+from app.tools.gettext_translation.prompt_builder import build_gettext_proofread_prompts
 from app.tools.gettext_translation.schemas import GettextEntryCandidate
 from app.tools.gettext_translation.task_runner import build_gettext_chunks, execute_gettext_translation_job
 from app.workers.celery_app import run_gettext_translation_job
@@ -45,6 +52,44 @@ def serialize_entry(entry: GettextTranslationEntry) -> GettextTranslationEntryRe
     return GettextTranslationEntryResponse.model_validate(entry, from_attributes=True)
 
 
+def validate_gettext_upload(uploaded_file: UploadedFile) -> None:
+    suffix = uploaded_file.original_name.lower().rsplit(".", 1)[-1] if "." in uploaded_file.original_name else ""
+    if suffix not in {"po", "pot"}:
+        raise HTTPException(status_code=400, detail="仅支持 .po 或 .pot 文件。")
+
+
+def normalize_plural_value_dict(values: dict[object, str] | None) -> dict[int, str]:
+    return {int(key): value for key, value in (values or {}).items()}
+
+
+def build_effective_plural_values(entry: GettextTranslationEntry) -> dict[int, str]:
+    translated_plural_values = normalize_plural_value_dict(entry.translated_plural_values)
+    edited_plural_values = normalize_plural_value_dict(entry.edited_plural_values)
+    merged_keys = set(translated_plural_values) | set(edited_plural_values)
+    values: dict[int, str] = {}
+    for key in sorted(merged_keys):
+        value = edited_plural_values.get(key) or translated_plural_values.get(key) or ""
+        if value.strip():
+            values[key] = value
+    return values
+
+
+@router.post("/context-draft", response_model=GettextContextDraftResponse)
+def context_draft(
+    payload: GettextContextDraftRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> GettextContextDraftResponse:
+    uploaded_file = db.get(UploadedFile, payload.uploaded_file_id)
+    if uploaded_file is None:
+        raise HTTPException(status_code=404, detail="上传文件不存在。")
+
+    validate_gettext_upload(uploaded_file)
+    parsed = parse_gettext_file(Path(uploaded_file.stored_path))
+    background = build_context_draft(parsed, payload.source_language, payload.target_language)
+    return GettextContextDraftResponse(background=background)
+
+
 @router.post("/jobs", response_model=GettextTranslationRunResponse)
 def create_job(
     payload: CreateGettextTranslationJobRequest,
@@ -55,10 +100,7 @@ def create_job(
     if uploaded_file is None:
         raise HTTPException(status_code=404, detail="上传文件不存在。")
 
-    suffix = uploaded_file.original_name.lower().rsplit(".", 1)[-1] if "." in uploaded_file.original_name else ""
-    if suffix not in {"po", "pot"}:
-        raise HTTPException(status_code=400, detail="仅支持 .po 或 .pot 文件。")
-
+    validate_gettext_upload(uploaded_file)
     parsed = parse_gettext_file(Path(uploaded_file.stored_path))
     candidates = [
         GettextEntryCandidate(
@@ -212,6 +254,126 @@ def list_entries(
         page=page,
         page_size=page_size,
     )
+
+
+@router.post("/runs/{run_id}/proofread-preview", response_model=GettextProofreadPreviewResponse)
+def proofread_run(
+    run_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> GettextProofreadPreviewResponse:
+    run = db.get(GettextTranslationRun, run_id)
+    if run is None or run.created_by != user.username:
+        raise HTTPException(status_code=404, detail="任务不存在。")
+    if run.status != "completed":
+        raise HTTPException(status_code=400, detail="请在任务完成后再发起 AI 校对。")
+
+    entries = (
+        db.execute(
+            select(GettextTranslationEntry)
+            .where(GettextTranslationEntry.run_id == run_id)
+            .order_by(GettextTranslationEntry.entry_index.asc())
+        )
+        .scalars()
+        .all()
+    )
+
+    review_items: list[dict[str, object]] = []
+    entry_by_index: dict[int, GettextTranslationEntry] = {}
+    for entry in entries:
+        if entry.is_plural:
+            current_plural_values = build_effective_plural_values(entry)
+            if not current_plural_values:
+                continue
+            review_items.append(
+                {
+                    "entry_index": entry.entry_index,
+                    "msgctxt": entry.msgctxt,
+                    "msgid": entry.msgid,
+                    "msgid_plural": entry.msgid_plural,
+                    "current_value": "",
+                    "current_plural_values": current_plural_values,
+                    "comment": entry.comment,
+                    "tcomment": entry.tcomment,
+                    "occurrences": entry.occurrences,
+                    "flags": entry.flags,
+                    "is_plural": True,
+                }
+            )
+        else:
+            current_value = (entry.edited_value or "").strip() or (entry.translated_value or "").strip()
+            if not current_value:
+                continue
+            review_items.append(
+                {
+                    "entry_index": entry.entry_index,
+                    "msgctxt": entry.msgctxt,
+                    "msgid": entry.msgid,
+                    "msgid_plural": entry.msgid_plural,
+                    "current_value": current_value,
+                    "current_plural_values": {},
+                    "comment": entry.comment,
+                    "tcomment": entry.tcomment,
+                    "occurrences": entry.occurrences,
+                    "flags": entry.flags,
+                    "is_plural": False,
+                }
+            )
+        entry_by_index[entry.entry_index] = entry
+
+    model_name = settings.openai_review_model or settings.openai_translation_model
+    if not review_items:
+        return GettextProofreadPreviewResponse(model=model_name, items=[])
+
+    system_prompt, user_prompt = build_gettext_proofread_prompts(
+        context_text=run.context_text,
+        source_language=run.source_language,
+        target_language=run.target_language,
+        items=review_items,
+    )
+    try:
+        suggestions = openai_service.proofread_gettext_entries(system_prompt, user_prompt)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    preview_items: list[GettextProofreadSuggestionResponse] = []
+    for item in suggestions:
+        entry = entry_by_index.get(item.entry_index)
+        if entry is None:
+            continue
+
+        current_plural_values = build_effective_plural_values(entry)
+        suggested_plural_values = {
+            plural_value.index: plural_value.value
+            for plural_value in item.suggested_plural_values
+            if plural_value.value.strip()
+        }
+        current_value = (entry.edited_value or "").strip() or (entry.translated_value or "").strip()
+        suggested_value = item.suggested_value.strip()
+
+        if entry.is_plural:
+            if not suggested_plural_values or suggested_plural_values == current_plural_values:
+                continue
+        else:
+            if not suggested_value or suggested_value == current_value:
+                continue
+
+        preview_items.append(
+            GettextProofreadSuggestionResponse(
+                entry_id=entry.id,
+                entry_index=entry.entry_index,
+                msgid=entry.msgid,
+                msgid_plural=entry.msgid_plural,
+                current_value=current_value,
+                current_plural_values=current_plural_values,
+                suggested_value=suggested_value,
+                suggested_plural_values=suggested_plural_values,
+                reason=item.reason.strip(),
+                is_plural=entry.is_plural,
+            )
+        )
+
+    return GettextProofreadPreviewResponse(model=model_name, items=preview_items)
 
 
 @router.patch("/runs/{run_id}/entries/{entry_id}", response_model=GettextTranslationEntryResponse)

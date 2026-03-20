@@ -7,5 +7,5 @@ TOOL_MANIFEST = {
     "category": "translation",
     "enabled": True,
     "order": 12,
-    "capabilities": ["upload", "translation", "edit", "export"],
+    "capabilities": ["upload", "translation", "edit", "proofread", "export"],
 }

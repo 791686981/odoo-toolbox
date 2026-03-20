@@ -106,3 +106,63 @@ def test_build_gettext_chunks_respects_translation_mode() -> None:
     chunks = build_gettext_chunks(candidates, chunk_size=1, translation_mode="blank_and_fuzzy")
 
     assert [[item.entry_index for item in chunk] for chunk in chunks] == [[1], [2]]
+
+
+def test_gettext_translation_item_response_accepts_plural_value_list() -> None:
+    from app.services.openai_service import GettextTranslationItemResponse
+
+    item = GettextTranslationItemResponse.model_validate(
+        {
+            "entry_index": 7,
+            "translated_value": "",
+            "translated_plural_values": [
+                {"index": 0, "value": "文件"},
+                {"index": 1, "value": "多个文件"},
+            ],
+        }
+    )
+
+    assert item.entry_index == 7
+    assert len(item.translated_plural_values) == 2
+    assert item.translated_plural_values[0].index == 0
+    assert item.translated_plural_values[1].value == "多个文件"
+
+
+def test_gettext_translation_batch_response_schema_uses_array_for_plural_values() -> None:
+    from openai.lib._pydantic import to_strict_json_schema
+
+    from app.services.openai_service import GettextTranslationBatchResponse
+
+    schema = to_strict_json_schema(GettextTranslationBatchResponse)
+    item_schema = schema["$defs"]["GettextTranslationItemResponse"]
+    plural_schema = item_schema["properties"]["translated_plural_values"]
+    plural_item_schema = (
+        schema["$defs"]["GettextPluralValueResponse"]
+        if "$ref" in plural_schema["items"]
+        else plural_schema["items"]
+    )
+
+    assert plural_schema["type"] == "array"
+    assert plural_item_schema["type"] == "object"
+    assert plural_item_schema["additionalProperties"] is False
+    assert set(plural_item_schema["properties"]) == {"index", "value"}
+
+
+def test_gettext_proofread_item_response_accepts_plural_value_list() -> None:
+    from app.services.openai_service import GettextProofreadItemResponse
+
+    item = GettextProofreadItemResponse.model_validate(
+        {
+            "entry_index": 2,
+            "suggested_value": "",
+            "suggested_plural_values": [
+                {"index": 0, "value": "文件"},
+                {"index": 1, "value": "文件列表"},
+            ],
+            "reason": "统一文件模块术语。",
+        }
+    )
+
+    assert item.entry_index == 2
+    assert item.suggested_plural_values[1].value == "文件列表"
+    assert item.reason == "统一文件模块术语。"

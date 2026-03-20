@@ -107,11 +107,13 @@ def execute_gettext_translation_job(run_id: str) -> None:
 
                 if entry.is_plural:
                     entry.translated_plural_values = {
-                        int(key): value
-                        for key, value in translated_item.translated_plural_values.items()
+                        plural_value.index: plural_value.value
+                        for plural_value in translated_item.translated_plural_values
                     }
+                    entry.translated_value = ""
                 else:
                     entry.translated_value = translated_item.translated_value
+                    entry.translated_plural_values = {}
                 entry.status = "translated"
 
             chunk.status = "completed"

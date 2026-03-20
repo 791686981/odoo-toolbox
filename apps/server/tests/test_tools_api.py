@@ -48,6 +48,6 @@ def test_tools_api_returns_manifests_from_registry(tmp_path) -> None:
                 "category": "translation",
                 "enabled": True,
                 "order": 12,
-                "capabilities": ["upload", "translation", "edit", "export"],
+                "capabilities": ["upload", "translation", "edit", "proofread", "export"],
             },
         ]

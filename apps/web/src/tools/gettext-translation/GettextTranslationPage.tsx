@@ -1,7 +1,7 @@
 import {
   ExportOutlined,
   InboxOutlined,
-  SaveOutlined,
+  RobotOutlined,
 } from "@ant-design/icons";
 import {
   Button,
@@ -30,6 +30,7 @@ import type { UploadRequestOption } from "rc-upload/lib/interface";
 
 import { api } from "../../shared/api/client";
 import type {
+  GettextProofreadSuggestion,
   GettextTranslationEntry,
   GettextTranslationMode,
   UploadedFileRecord,
@@ -64,6 +65,24 @@ function summarizeTranslation(entry: GettextTranslationEntry, field: "msgstr" | 
   return parts.length ? parts.join(" / ") : "-";
 }
 
+function summarizePluralValues(values: Record<number, string>) {
+  const parts = Object.entries(values).map(([key, value]) => `[${key}] ${value}`);
+  return parts.length ? parts.join(" / ") : "-";
+}
+
+function summarizeProofreadValue(
+  suggestion: GettextProofreadSuggestion,
+  field: "current" | "suggested",
+) {
+  if (!suggestion.is_plural) {
+    return field === "current" ? suggestion.current_value || "-" : suggestion.suggested_value || "-";
+  }
+
+  const values =
+    field === "current" ? suggestion.current_plural_values : suggestion.suggested_plural_values;
+  return summarizePluralValues(values);
+}
+
 function buildPluralDraft(entry: GettextTranslationEntry) {
   const keys = new Set([
     ...Object.keys(entry.msgstr_plural),
@@ -93,11 +112,27 @@ export function GettextTranslationPage() {
   const [uploadedFile, setUploadedFile] = useState<UploadedFileRecord | null>(null);
   const [uploadedFileType, setUploadedFileType] = useState<"po" | "pot" | null>(null);
   const [contextText, setContextText] = useState("");
+  const [generatedContextSignature, setGeneratedContextSignature] = useState("");
   const [runId, setRunId] = useState(searchParams.get("runId") ?? "");
   const [page, setPage] = useState(1);
   const [pluralEditorEntry, setPluralEditorEntry] = useState<GettextTranslationEntry | null>(null);
   const [pluralDraft, setPluralDraft] = useState<Record<string, string>>({});
+  const [proofreadOpen, setProofreadOpen] = useState(false);
+  const [proofreadModel, setProofreadModel] = useState("");
+  const [proofreadSuggestions, setProofreadSuggestions] = useState<GettextProofreadSuggestion[]>([]);
+  const [applyingSuggestionId, setApplyingSuggestionId] = useState("");
+  const [applyingAllSuggestions, setApplyingAllSuggestions] = useState(false);
   const pageSize = 20;
+  const sourceLanguage = Form.useWatch("source_language", form) ?? "";
+  const targetLanguage = Form.useWatch("target_language", form) ?? "";
+  const currentContextSignature = uploadedFile ? `${uploadedFile.id}:${sourceLanguage}:${targetLanguage}` : "";
+  const canGenerateContext = Boolean(uploadedFile && sourceLanguage.trim() && targetLanguage.trim());
+  const canCreateJob = Boolean(
+    uploadedFile &&
+      contextText.trim() &&
+      generatedContextSignature &&
+      generatedContextSignature === currentContextSignature,
+  );
 
   const settingsQuery = useQuery({
     queryKey: ["settings"],
@@ -145,6 +180,11 @@ export function GettextTranslationPage() {
     if (runQuery.data) {
       setUploadedFileType(runQuery.data.input_file_type === "po" ? "po" : "pot");
       setContextText(runQuery.data.context_text);
+      setGeneratedContextSignature(
+        runQuery.data.context_text.trim()
+          ? `${runQuery.data.uploaded_file_id}:${runQuery.data.source_language}:${runQuery.data.target_language}`
+          : "",
+      );
       form.setFieldsValue({
         source_language: runQuery.data.source_language,
         target_language: runQuery.data.target_language,
@@ -154,6 +194,18 @@ export function GettextTranslationPage() {
       });
     }
   }, [form, runQuery.data]);
+
+  const contextDraftMutation = useMutation({
+    mutationFn: api.createGettextContextDraft,
+    onSuccess: (data, variables) => {
+      setContextText(data.background);
+      setGeneratedContextSignature(
+        `${variables.uploaded_file_id}:${variables.source_language}:${variables.target_language}`,
+      );
+      message.success("术语与上下文说明已生成");
+    },
+    onError: (error: Error) => message.error(error.message),
+  });
 
   const createJobMutation = useMutation({
     mutationFn: api.createGettextJob,
@@ -193,6 +245,16 @@ export function GettextTranslationPage() {
     onError: (error: Error) => message.error(error.message),
   });
 
+  const proofreadMutation = useMutation({
+    mutationFn: () => api.proofreadGettextRun(runId),
+    onSuccess: (data) => {
+      setProofreadModel(data.model);
+      setProofreadSuggestions(data.items);
+      setProofreadOpen(true);
+    },
+    onError: (error: Error) => message.error(error.message),
+  });
+
   const uploadProps = useMemo(
     () => ({
       accept: ".po,.pot,text/plain",
@@ -209,6 +271,8 @@ export function GettextTranslationPage() {
           setUploadedFile(record);
           setRunId("");
           setPage(1);
+          setContextText("");
+          setGeneratedContextSignature("");
           options.onSuccess?.(record);
         } catch (error) {
           options.onError?.(error as Error);
@@ -218,9 +282,34 @@ export function GettextTranslationPage() {
     [],
   );
 
+  const handleGenerateContext = () => {
+    if (!uploadedFile) {
+      message.warning("请先上传 .po 或 .pot 文件");
+      return;
+    }
+    if (!sourceLanguage.trim() || !targetLanguage.trim()) {
+      message.warning("请先填写源语言和目标语言");
+      return;
+    }
+
+    contextDraftMutation.mutate({
+      uploaded_file_id: uploadedFile.id,
+      source_language: sourceLanguage,
+      target_language: targetLanguage,
+    });
+  };
+
   const handleCreateJob = (values: GettextFormValues) => {
     if (!uploadedFile) {
       message.warning("请先上传 .po 或 .pot 文件");
+      return;
+    }
+    if (!contextText.trim()) {
+      message.warning("请先生成术语与上下文说明");
+      return;
+    }
+    if (generatedContextSignature !== currentContextSignature) {
+      message.warning("源语言、目标语言或文件已变化，请重新生成术语与上下文说明");
       return;
     }
 
@@ -258,6 +347,47 @@ export function GettextTranslationPage() {
       : runQuery.data?.status === "failed"
         ? "error"
         : "processing";
+
+  const applySuggestion = async (suggestion: GettextProofreadSuggestion) => {
+    setApplyingSuggestionId(suggestion.entry_id);
+    try {
+      await api.updateGettextEntry(runId, suggestion.entry_id, {
+        edited_value: suggestion.is_plural ? "" : suggestion.suggested_value,
+        edited_plural_values: suggestion.is_plural ? suggestion.suggested_plural_values : {},
+      });
+      setProofreadSuggestions((current) => current.filter((item) => item.entry_id !== suggestion.entry_id));
+      await queryClient.invalidateQueries({ queryKey: ["gettext-entries", runId, page] });
+      message.success(`已采用第 ${suggestion.entry_index} 条建议`);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "采用建议失败");
+    } finally {
+      setApplyingSuggestionId("");
+    }
+  };
+
+  const applyAllSuggestions = async () => {
+    if (!proofreadSuggestions.length) {
+      return;
+    }
+    setApplyingAllSuggestions(true);
+    try {
+      await Promise.all(
+        proofreadSuggestions.map((suggestion) =>
+          api.updateGettextEntry(runId, suggestion.entry_id, {
+            edited_value: suggestion.is_plural ? "" : suggestion.suggested_value,
+            edited_plural_values: suggestion.is_plural ? suggestion.suggested_plural_values : {},
+          }),
+        ),
+      );
+      setProofreadSuggestions([]);
+      await queryClient.invalidateQueries({ queryKey: ["gettext-entries", runId, page] });
+      message.success("已采用全部 AI 校对建议");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "批量采用失败");
+    } finally {
+      setApplyingAllSuggestions(false);
+    }
+  };
 
   return (
     <div className="page-stack">
@@ -319,10 +449,6 @@ export function GettextTranslationPage() {
                   />
                 </Form.Item>
               ) : null}
-
-              <Button type="primary" htmlType="submit" loading={createJobMutation.isPending} icon={<SaveOutlined />}>
-                开始翻译
-              </Button>
             </Form>
           </Card>
         </Col>
@@ -339,6 +465,26 @@ export function GettextTranslationPage() {
               onChange={(event) => setContextText(event.target.value)}
               placeholder="在这里输入术语偏好、上下文说明和风格要求。"
             />
+            <Space className="action-row" wrap style={{ marginTop: 16 }}>
+              <Button
+                onClick={handleGenerateContext}
+                loading={contextDraftMutation.isPending}
+                disabled={!canGenerateContext}
+              >
+                生成术语与上下文说明
+              </Button>
+              <Button
+                type="primary"
+                onClick={() => form.submit()}
+                loading={createJobMutation.isPending}
+                disabled={!canCreateJob}
+              >
+                翻译内容
+              </Button>
+            </Space>
+            <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
+              重新上传文件，或修改源语言、目标语言后，需要重新生成一次说明。
+            </Typography.Paragraph>
           </Card>
         </Col>
       </Row>
@@ -354,6 +500,14 @@ export function GettextTranslationPage() {
             </div>
             <Space className="result-toolbar" wrap>
               {runQuery.data ? <Tag color={statusColor}>{runQuery.data.status}</Tag> : null}
+              <Button
+                icon={<RobotOutlined />}
+                disabled={!runQuery.data || runQuery.data.status !== "completed"}
+                loading={proofreadMutation.isPending}
+                onClick={() => proofreadMutation.mutate()}
+              >
+                AI 校对
+              </Button>
               <Button
                 type="primary"
                 icon={<ExportOutlined />}
@@ -514,6 +668,95 @@ export function GettextTranslationPage() {
               ))}
           </Space>
         ) : null}
+      </Modal>
+
+      <Modal
+        open={proofreadOpen}
+        title="AI 校对建议"
+        width={1180}
+        onCancel={() => setProofreadOpen(false)}
+        footer={[
+          <Button key="close" onClick={() => setProofreadOpen(false)}>
+            关闭
+          </Button>,
+          <Button
+            key="apply-all"
+            type="primary"
+            disabled={!proofreadSuggestions.length}
+            loading={applyingAllSuggestions}
+            onClick={() => void applyAllSuggestions()}
+          >
+            全部采用
+          </Button>,
+        ]}
+      >
+        <Typography.Paragraph className="proofread-copy">
+          当前使用模型：{proofreadModel || "-"}。AI 只返回建议修改项，最终是否采用由你决定。
+        </Typography.Paragraph>
+        {proofreadSuggestions.length ? (
+          <Table
+            rowKey="entry_id"
+            size="small"
+            className="proofread-table"
+            pagination={false}
+            scroll={{ x: 1080, y: 460 }}
+            dataSource={proofreadSuggestions}
+            columns={[
+              {
+                title: "#",
+                dataIndex: "entry_index",
+                width: 72,
+              },
+              {
+                title: "源文",
+                width: 260,
+                render: (_, suggestion: GettextProofreadSuggestion) => (
+                  <div>
+                    <Typography.Text>{suggestion.msgid}</Typography.Text>
+                    {suggestion.msgid_plural ? (
+                      <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                        plural: {suggestion.msgid_plural}
+                      </Typography.Paragraph>
+                    ) : null}
+                  </div>
+                ),
+              },
+              {
+                title: "当前结果",
+                width: 280,
+                render: (_, suggestion: GettextProofreadSuggestion) =>
+                  summarizeProofreadValue(suggestion, "current"),
+              },
+              {
+                title: "AI 建议",
+                width: 280,
+                render: (_, suggestion: GettextProofreadSuggestion) =>
+                  summarizeProofreadValue(suggestion, "suggested"),
+              },
+              {
+                title: "原因",
+                dataIndex: "reason",
+                width: 280,
+              },
+              {
+                title: "操作",
+                width: 108,
+                fixed: "right",
+                render: (_, suggestion: GettextProofreadSuggestion) => (
+                  <Button
+                    type="link"
+                    loading={applyingSuggestionId === suggestion.entry_id}
+                    onClick={() => void applySuggestion(suggestion)}
+                  >
+                    采用
+                  </Button>
+                ),
+              },
+            ]}
+          />
+        ) : (
+          <Empty description="AI 校对未提出需要修改的建议。" />
+        )}
       </Modal>
     </div>
   );

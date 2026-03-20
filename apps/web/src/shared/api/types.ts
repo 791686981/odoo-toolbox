@@ -82,6 +82,10 @@ export type TranslationRowsPage = {
 
 export type GettextTranslationMode = "blank" | "blank_and_fuzzy" | "overwrite_all";
 
+export type GettextContextDraft = {
+  background: string;
+};
+
 export type GettextTranslationRun = {
   id: string;
   tool_id: string;
@@ -129,6 +133,24 @@ export type GettextTranslationEntriesPage = {
   total: number;
   page: number;
   page_size: number;
+};
+
+export type GettextProofreadSuggestion = {
+  entry_id: string;
+  entry_index: number;
+  msgid: string;
+  msgid_plural: string;
+  current_value: string;
+  current_plural_values: Record<number, string>;
+  suggested_value: string;
+  suggested_plural_values: Record<number, string>;
+  reason: string;
+  is_plural: boolean;
+};
+
+export type GettextProofreadPreview = {
+  model: string;
+  items: GettextProofreadSuggestion[];
 };
 
 export type ProofreadSuggestion = {

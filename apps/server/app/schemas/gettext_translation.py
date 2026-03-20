@@ -26,6 +26,16 @@ class GettextTranslationRunResponse(BaseModel):
     updated_at: datetime
 
 
+class GettextContextDraftRequest(BaseModel):
+    uploaded_file_id: str
+    source_language: str
+    target_language: str
+
+
+class GettextContextDraftResponse(BaseModel):
+    background: str
+
+
 class GettextTranslationEntryResponse(BaseModel):
     id: str
     entry_index: int
@@ -52,6 +62,24 @@ class GettextTranslationEntriesPage(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class GettextProofreadSuggestionResponse(BaseModel):
+    entry_id: str
+    entry_index: int
+    msgid: str
+    msgid_plural: str
+    current_value: str
+    current_plural_values: dict[int, str] = Field(default_factory=dict)
+    suggested_value: str
+    suggested_plural_values: dict[int, str] = Field(default_factory=dict)
+    reason: str
+    is_plural: bool
+
+
+class GettextProofreadPreviewResponse(BaseModel):
+    model: str
+    items: list[GettextProofreadSuggestionResponse]
 
 
 class UpdateGettextTranslationEntryRequest(BaseModel):

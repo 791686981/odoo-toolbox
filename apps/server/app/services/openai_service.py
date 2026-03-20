@@ -31,14 +31,30 @@ class ProofreadBatchResponse(BaseModel):
     items: List[ProofreadItemResponse]
 
 
+class GettextPluralValueResponse(BaseModel):
+    index: int
+    value: str
+
+
 class GettextTranslationItemResponse(BaseModel):
     entry_index: int
     translated_value: str = ""
-    translated_plural_values: dict[int, str] = Field(default_factory=dict)
+    translated_plural_values: List[GettextPluralValueResponse] = Field(default_factory=list)
 
 
 class GettextTranslationBatchResponse(BaseModel):
     items: List[GettextTranslationItemResponse]
+
+
+class GettextProofreadItemResponse(BaseModel):
+    entry_index: int
+    suggested_value: str = ""
+    suggested_plural_values: List[GettextPluralValueResponse] = Field(default_factory=list)
+    reason: str
+
+
+class GettextProofreadBatchResponse(BaseModel):
+    items: List[GettextProofreadItemResponse]
 
 
 class OpenAIService:
@@ -127,6 +143,25 @@ class OpenAIService:
                 },
             ],
             text_format=GettextTranslationBatchResponse,
+        )
+        parsed = response.output_parsed
+        return parsed.items
+
+    def proofread_gettext_entries(self, system_prompt: str, user_prompt: str) -> List[GettextProofreadItemResponse]:
+        client = self._require_client()
+        response = client.responses.parse(
+            model=settings.openai_review_model or settings.openai_translation_model,
+            input=[
+                {
+                    "role": "system",
+                    "content": [{"type": "input_text", "text": system_prompt}],
+                },
+                {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": user_prompt}],
+                },
+            ],
+            text_format=GettextProofreadBatchResponse,
         )
         parsed = response.output_parsed
         return parsed.items

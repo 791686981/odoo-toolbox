@@ -10,3 +10,13 @@ def test_tool_registry_exposes_manifest_and_router() -> None:
         for router in routers
         for route in router.routes
     )
+    assert any(
+        route.path == "/tools/gettext-translation/context-draft"
+        for router in routers
+        for route in router.routes
+    )
+    assert any(
+        route.path == "/tools/gettext-translation/runs/{run_id}/proofread-preview"
+        for router in routers
+        for route in router.routes
+    )
