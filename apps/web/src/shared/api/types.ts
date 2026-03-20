@@ -80,6 +80,57 @@ export type TranslationRowsPage = {
   page_size: number;
 };
 
+export type GettextTranslationMode = "blank" | "blank_and_fuzzy" | "overwrite_all";
+
+export type GettextTranslationRun = {
+  id: string;
+  tool_id: string;
+  status: string;
+  progress: number;
+  input_file_type: string;
+  translation_mode: GettextTranslationMode;
+  source_language: string;
+  target_language: string;
+  context_text: string;
+  chunk_size: number;
+  concurrency: number;
+  total_entries: number;
+  processed_entries: number;
+  error_message: string;
+  uploaded_file_id: string;
+  exported_file_id?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GettextTranslationEntry = {
+  id: string;
+  entry_index: number;
+  msgctxt: string;
+  msgid: string;
+  msgid_plural: string;
+  msgstr: string;
+  msgstr_plural: Record<number, string>;
+  translated_value: string;
+  translated_plural_values: Record<number, string>;
+  edited_value: string;
+  edited_plural_values: Record<number, string>;
+  comment: string;
+  tcomment: string;
+  occurrences: string[][];
+  flags: string[];
+  status: string;
+  is_plural: boolean;
+  is_fuzzy: boolean;
+};
+
+export type GettextTranslationEntriesPage = {
+  items: GettextTranslationEntry[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
 export type ProofreadSuggestion = {
   row_id: string;
   row_number: number;

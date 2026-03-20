@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 
 import { csvTranslationToolPage } from "../csv-translation";
+import { gettextTranslationToolPage } from "../gettext-translation";
 
 type ToolPageRegistration = {
   id: string;
@@ -9,7 +10,10 @@ type ToolPageRegistration = {
   buildRunDetailPath?: (runId: string) => string;
 };
 
-export const toolPageRegistrations: ToolPageRegistration[] = [csvTranslationToolPage];
+export const toolPageRegistrations: ToolPageRegistration[] = [
+  csvTranslationToolPage,
+  gettextTranslationToolPage,
+];
 
 const toolPageRegistrationMap = new Map(toolPageRegistrations.map((registration) => [registration.id, registration]));
 
