@@ -4,6 +4,7 @@ from celery import Celery
 
 from app.core.config import settings
 from app.tools.csv_translation.task_runner import execute_translation_job
+from app.tools.gettext_translation.task_runner import execute_gettext_translation_job
 
 
 celery_app = Celery(
@@ -16,3 +17,8 @@ celery_app = Celery(
 @celery_app.task(name="csv_translation.run_translation_job")
 def run_translation_job(job_id: str) -> None:
     execute_translation_job(job_id)
+
+
+@celery_app.task(name="gettext_translation.run_translation_job")
+def run_gettext_translation_job(run_id: str) -> None:
+    execute_gettext_translation_job(run_id)

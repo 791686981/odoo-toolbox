@@ -38,5 +38,16 @@ def test_tools_api_returns_manifests_from_registry(tmp_path) -> None:
                 "enabled": True,
                 "order": 10,
                 "capabilities": ["upload", "translation", "proofread", "export"],
-            }
+            },
+            {
+                "id": "gettext-translation",
+                "title": "Gettext 翻译",
+                "description": "上传 .po/.pot，按策略翻译、人工修订并导出 .po。",
+                "route": "/tools/gettext-translation",
+                "icon": "translation",
+                "category": "translation",
+                "enabled": True,
+                "order": 12,
+                "capabilities": ["upload", "translation", "edit", "export"],
+            },
         ]

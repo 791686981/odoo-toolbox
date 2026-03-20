@@ -1,4 +1,7 @@
 import type {
+  GettextTranslationEntriesPage,
+  GettextTranslationMode,
+  GettextTranslationRun,
   ProofreadPreview,
   RuntimeSettings,
   SidebarTool,
@@ -105,6 +108,42 @@ export const api = {
     }),
   exportJob: (jobId: string) =>
     request<{ file_id: string; filename: string }>(`/api/jobs/${jobId}/export`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  gettextRun: (runId: string) =>
+    request<GettextTranslationRun>(`/api/tools/gettext-translation/runs/${runId}`),
+  gettextEntries: (runId: string, page: number, pageSize: number) =>
+    request<GettextTranslationEntriesPage>(
+      `/api/tools/gettext-translation/runs/${runId}/entries?page=${page}&page_size=${pageSize}`,
+    ),
+  createGettextJob: (payload: {
+    uploaded_file_id: string;
+    source_language: string;
+    target_language: string;
+    context_text: string;
+    translation_mode: GettextTranslationMode;
+    chunk_size: number;
+    concurrency: number;
+  }) =>
+    request<GettextTranslationRun>("/api/tools/gettext-translation/jobs", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateGettextEntry: (
+    runId: string,
+    entryId: string,
+    payload: {
+      edited_value: string;
+      edited_plural_values: Record<number, string>;
+    },
+  ) =>
+    request(`/api/tools/gettext-translation/runs/${runId}/entries/${entryId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  exportGettextRun: (runId: string) =>
+    request<{ file_id: string; filename: string }>(`/api/tools/gettext-translation/runs/${runId}/export`, {
       method: "POST",
       body: JSON.stringify({}),
     }),

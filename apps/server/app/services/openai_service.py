@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import List
 
 from openai import OpenAI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.config import settings
 
@@ -29,6 +29,16 @@ class ProofreadItemResponse(BaseModel):
 
 class ProofreadBatchResponse(BaseModel):
     items: List[ProofreadItemResponse]
+
+
+class GettextTranslationItemResponse(BaseModel):
+    entry_index: int
+    translated_value: str = ""
+    translated_plural_values: dict[int, str] = Field(default_factory=dict)
+
+
+class GettextTranslationBatchResponse(BaseModel):
+    items: List[GettextTranslationItemResponse]
 
 
 class OpenAIService:
@@ -98,6 +108,25 @@ class OpenAIService:
                 },
             ],
             text_format=ProofreadBatchResponse,
+        )
+        parsed = response.output_parsed
+        return parsed.items
+
+    def translate_gettext_entries(self, system_prompt: str, user_prompt: str) -> List[GettextTranslationItemResponse]:
+        client = self._require_client()
+        response = client.responses.parse(
+            model=settings.openai_translation_model,
+            input=[
+                {
+                    "role": "system",
+                    "content": [{"type": "input_text", "text": system_prompt}],
+                },
+                {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": user_prompt}],
+                },
+            ],
+            text_format=GettextTranslationBatchResponse,
         )
         parsed = response.output_parsed
         return parsed.items
