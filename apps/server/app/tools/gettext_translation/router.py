@@ -2,26 +2,36 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.db.session import get_db
 from app.models import (
     GettextTranslationChunk,
     GettextTranslationEntry,
     GettextTranslationRun,
+    ToolArtifact,
     ToolRun,
     UploadedFile,
     User,
 )
 from app.schemas.gettext_translation import (
     CreateGettextTranslationJobRequest,
+    ExportGettextTranslationResponse,
+    GettextTranslationEntriesPage,
+    GettextTranslationEntryResponse,
     GettextTranslationRunResponse,
+    UpdateGettextTranslationEntryRequest,
 )
+from app.services.file_service import store_generated_file
+from app.tools.gettext_translation.exporter import export_gettext_file
 from app.tools.gettext_translation.parser import parse_gettext_file
 from app.tools.gettext_translation.schemas import GettextEntryCandidate
-from app.tools.gettext_translation.task_runner import build_gettext_chunks
+from app.tools.gettext_translation.task_runner import build_gettext_chunks, execute_gettext_translation_job
+from app.workers.celery_app import run_gettext_translation_job
 
 
 router = APIRouter(prefix="/tools/gettext-translation", tags=["gettext-translation"])
@@ -29,6 +39,10 @@ router = APIRouter(prefix="/tools/gettext-translation", tags=["gettext-translati
 
 def serialize_run(run: GettextTranslationRun) -> GettextTranslationRunResponse:
     return GettextTranslationRunResponse.model_validate(run, from_attributes=True)
+
+
+def serialize_entry(entry: GettextTranslationEntry) -> GettextTranslationEntryResponse:
+    return GettextTranslationEntryResponse.model_validate(entry, from_attributes=True)
 
 
 @router.post("/jobs", response_model=GettextTranslationRunResponse)
@@ -141,4 +155,153 @@ def create_job(
 
     db.commit()
     db.refresh(run)
+
+    if run.total_entries > 0:
+        if settings.eager_tasks:
+            execute_gettext_translation_job(run.id)
+        else:
+            run_gettext_translation_job.delay(run.id)
+        db.refresh(run)
+
     return serialize_run(run)
+
+
+@router.get("/runs/{run_id}", response_model=GettextTranslationRunResponse)
+def get_run(
+    run_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> GettextTranslationRunResponse:
+    run = db.get(GettextTranslationRun, run_id)
+    if run is None or run.created_by != user.username:
+        raise HTTPException(status_code=404, detail="任务不存在。")
+    return serialize_run(run)
+
+
+@router.get("/runs/{run_id}/entries", response_model=GettextTranslationEntriesPage)
+def list_entries(
+    run_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> GettextTranslationEntriesPage:
+    run = db.get(GettextTranslationRun, run_id)
+    if run is None or run.created_by != user.username:
+        raise HTTPException(status_code=404, detail="任务不存在。")
+
+    total = (
+        db.execute(select(func.count()).select_from(GettextTranslationEntry).where(GettextTranslationEntry.run_id == run_id))
+        .scalar_one()
+    )
+    entries = (
+        db.execute(
+            select(GettextTranslationEntry)
+            .where(GettextTranslationEntry.run_id == run_id)
+            .order_by(GettextTranslationEntry.entry_index.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        .scalars()
+        .all()
+    )
+
+    return GettextTranslationEntriesPage(
+        items=[serialize_entry(entry) for entry in entries],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.patch("/runs/{run_id}/entries/{entry_id}", response_model=GettextTranslationEntryResponse)
+def update_entry(
+    run_id: str,
+    entry_id: str,
+    payload: UpdateGettextTranslationEntryRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> GettextTranslationEntryResponse:
+    run = db.get(GettextTranslationRun, run_id)
+    if run is None or run.created_by != user.username:
+        raise HTTPException(status_code=404, detail="任务不存在。")
+
+    entry = db.get(GettextTranslationEntry, entry_id)
+    if entry is None or entry.run_id != run_id:
+        raise HTTPException(status_code=404, detail="条目不存在。")
+
+    entry.edited_value = payload.edited_value
+    entry.edited_plural_values = payload.edited_plural_values
+    has_edit = bool(payload.edited_value.strip()) or any(value.strip() for value in payload.edited_plural_values.values())
+    entry.status = "edited" if has_edit else ("translated" if entry.translated_value or entry.translated_plural_values else entry.status)
+    db.commit()
+    db.refresh(entry)
+    return serialize_entry(entry)
+
+
+@router.post("/runs/{run_id}/export", response_model=ExportGettextTranslationResponse)
+def export_run(
+    run_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ExportGettextTranslationResponse:
+    run = db.get(GettextTranslationRun, run_id)
+    if run is None or run.created_by != user.username:
+        raise HTTPException(status_code=404, detail="任务不存在。")
+    if run.status != "completed":
+        raise HTTPException(status_code=400, detail="任务未完成，无法导出。")
+
+    source_file = db.get(UploadedFile, run.uploaded_file_id)
+    if source_file is None:
+        raise HTTPException(status_code=404, detail="源文件不存在。")
+
+    parsed = parse_gettext_file(Path(source_file.stored_path))
+    entries = (
+        db.execute(
+            select(GettextTranslationEntry)
+            .where(GettextTranslationEntry.run_id == run_id)
+            .order_by(GettextTranslationEntry.entry_index.asc())
+        )
+        .scalars()
+        .all()
+    )
+    entry_results = {
+        entry.entry_index: {
+            "translated_value": entry.translated_value,
+            "translated_plural_values": entry.translated_plural_values,
+            "edited_value": entry.edited_value,
+            "edited_plural_values": entry.edited_plural_values,
+        }
+        for entry in entries
+    }
+    content = export_gettext_file(
+        parsed=parsed,
+        target_language=run.target_language,
+        entry_results=entry_results,
+    )
+
+    stem = Path(source_file.original_name).stem
+    filename = (
+        f"{stem}.{run.target_language}.po"
+        if run.input_file_type == "pot"
+        else source_file.original_name
+    )
+    exported_file = store_generated_file(
+        db=db,
+        filename=filename,
+        content=content,
+        mime_type="text/x-gettext-translation",
+        username=user.username,
+    )
+    db.add(
+        ToolArtifact(
+            run_id=run.id,
+            kind="export",
+            file_id=exported_file.id,
+            label="Gettext 导出",
+            artifact_metadata={"run_id": run.id},
+        )
+    )
+    run.exported_file_id = exported_file.id
+    db.commit()
+    return ExportGettextTranslationResponse(file_id=exported_file.id, filename=exported_file.original_name)
