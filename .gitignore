@@ -45,3 +45,4 @@ storage/outputs/*
 !storage/outputs/.gitkeep
 
 docs/plans
+.worktrees/
