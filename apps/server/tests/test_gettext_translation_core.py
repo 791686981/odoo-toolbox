@@ -70,3 +70,39 @@ def test_export_gettext_file_prefers_manual_edits_and_updates_language(tmp_path:
     exported_text = content.decode("utf-8")
     assert 'Language: zh_CN\\n' in exported_text
     assert 'msgstr "保存按钮"' in exported_text
+
+
+def test_build_gettext_chunks_respects_translation_mode() -> None:
+    from app.tools.gettext_translation.schemas import GettextEntryCandidate
+    from app.tools.gettext_translation.task_runner import build_gettext_chunks
+
+    candidates = [
+        GettextEntryCandidate(
+            entry_index=1,
+            msgid="Save",
+            msgstr="",
+            msgstr_plural={},
+            is_plural=False,
+            is_fuzzy=False,
+        ),
+        GettextEntryCandidate(
+            entry_index=2,
+            msgid="Cancel",
+            msgstr="取消",
+            msgstr_plural={},
+            is_plural=False,
+            is_fuzzy=True,
+        ),
+        GettextEntryCandidate(
+            entry_index=3,
+            msgid="Archive",
+            msgstr="归档",
+            msgstr_plural={},
+            is_plural=False,
+            is_fuzzy=False,
+        ),
+    ]
+
+    chunks = build_gettext_chunks(candidates, chunk_size=1, translation_mode="blank_and_fuzzy")
+
+    assert [[item.entry_index for item in chunk] for chunk in chunks] == [[1], [2]]
