@@ -7,6 +7,8 @@ from fastapi import APIRouter
 
 from app.tools.csv_translation.manifest import TOOL_MANIFEST as CSV_TRANSLATION_TOOL_MANIFEST
 from app.tools.csv_translation.router import router as csv_translation_router
+from app.tools.gettext_translation.manifest import TOOL_MANIFEST as GETTEXT_TRANSLATION_TOOL_MANIFEST
+from app.tools.gettext_translation.router import router as gettext_translation_router
 
 
 @dataclass(frozen=True)
@@ -19,6 +21,10 @@ REGISTERED_TOOLS = [
     ToolRegistration(
         manifest=CSV_TRANSLATION_TOOL_MANIFEST,
         router=csv_translation_router,
+    ),
+    ToolRegistration(
+        manifest=GETTEXT_TRANSLATION_TOOL_MANIFEST,
+        router=gettext_translation_router,
     ),
 ]
 
