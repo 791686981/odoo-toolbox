@@ -12,7 +12,7 @@ RUN apt-get update \
 COPY apps/server/pyproject.toml apps/server/uv.lock apps/server/README.md ./
 COPY apps/server/app ./app
 
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir -i https://mirrors.tencent.com/pypi/simple/ --trusted-host mirrors.tencent.com .
 
 RUN mkdir -p /app/storage/uploads /app/storage/outputs
 
