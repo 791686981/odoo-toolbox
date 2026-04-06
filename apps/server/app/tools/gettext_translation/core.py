@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,10 +22,12 @@ class AutoTranslateResult:
     total_entries: int
     translated_entries: int
     proofread_applied: int
+    content: str
 
 
 def auto_translate(
-    file_path: str,
+    file_content: str,
+    filename: str,
     source_language: str,
     target_language: str,
     output_path: str | None = None,
@@ -33,80 +36,85 @@ def auto_translate(
     proofread: bool = False,
     context_text: str = "",
 ) -> AutoTranslateResult:
-    path = Path(file_path)
-    if not path.exists():
-        raise FileNotFoundError(f"文件不存在: {file_path}")
+    suffix = Path(filename).suffix or ".pot"
+    with tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False, encoding="utf-8") as tmp:
+        tmp.write(file_content)
+        tmp_path = Path(tmp.name)
 
-    parsed = parse_gettext_file(path)
+    try:
+        parsed = parse_gettext_file(tmp_path)
 
-    if not context_text.strip():
-        context_text = build_context_draft(parsed, source_language, target_language)
+        if not context_text.strip():
+            context_text = build_context_draft(parsed, source_language, target_language)
 
-    candidates = [
-        GettextEntryCandidate(
-            entry_index=entry.entry_index,
-            msgid=entry.msgid,
-            msgstr=entry.msgstr,
-            msgstr_plural=entry.msgstr_plural,
-            is_plural=entry.is_plural,
-            is_fuzzy=entry.is_fuzzy,
-        )
-        for entry in parsed.entries
-    ]
-    chunks = build_gettext_chunks(candidates, chunk_size, translation_mode)
-    selected_indexes = {c.entry_index for chunk in chunks for c in chunk}
-    entries_by_index = {e.entry_index: e for e in parsed.entries}
+        candidates = [
+            GettextEntryCandidate(
+                entry_index=entry.entry_index,
+                msgid=entry.msgid,
+                msgstr=entry.msgstr,
+                msgstr_plural=entry.msgstr_plural,
+                is_plural=entry.is_plural,
+                is_fuzzy=entry.is_fuzzy,
+            )
+            for entry in parsed.entries
+        ]
+        chunks = build_gettext_chunks(candidates, chunk_size, translation_mode)
+        entries_by_index = {e.entry_index: e for e in parsed.entries}
 
-    entry_results: dict[int, dict[str, object]] = {}
+        entry_results: dict[int, dict[str, object]] = {}
 
-    for chunk in chunks:
-        chunk_entries = [entries_by_index[c.entry_index] for c in chunk]
-        system_prompt, user_prompt = build_gettext_translation_prompts(
-            context_text=context_text,
-            source_language=source_language,
+        for chunk in chunks:
+            chunk_entries = [entries_by_index[c.entry_index] for c in chunk]
+            system_prompt, user_prompt = build_gettext_translation_prompts(
+                context_text=context_text,
+                source_language=source_language,
+                target_language=target_language,
+                entries=chunk_entries,
+            )
+            translated_items = openai_service.translate_gettext_entries(system_prompt, user_prompt)
+
+            for item in translated_items:
+                entry_results[item.entry_index] = {
+                    "translated_value": item.translated_value,
+                    "translated_plural_values": {
+                        pv.index: pv.value for pv in item.translated_plural_values
+                    },
+                    "edited_value": "",
+                    "edited_plural_values": {},
+                }
+
+        proofread_applied = 0
+        if proofread and entry_results:
+            proofread_applied = _apply_proofread(
+                parsed_entries=parsed.entries,
+                entry_results=entry_results,
+                context_text=context_text,
+                source_language=source_language,
+                target_language=target_language,
+            )
+
+        exported = export_gettext_file(
+            parsed=parsed,
             target_language=target_language,
-            entries=chunk_entries,
-        )
-        translated_items = openai_service.translate_gettext_entries(system_prompt, user_prompt)
-
-        for item in translated_items:
-            entry_results[item.entry_index] = {
-                "translated_value": item.translated_value,
-                "translated_plural_values": {
-                    pv.index: pv.value for pv in item.translated_plural_values
-                },
-                "edited_value": "",
-                "edited_plural_values": {},
-            }
-
-    proofread_applied = 0
-    if proofread and entry_results:
-        proofread_applied = _apply_proofread(
-            parsed_entries=parsed.entries,
             entry_results=entry_results,
-            context_text=context_text,
-            source_language=source_language,
-            target_language=target_language,
         )
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
-    content = export_gettext_file(
-        parsed=parsed,
-        target_language=target_language,
-        entry_results=entry_results,
-    )
+    translated_content = exported.decode("utf-8")
 
     if output_path is None:
-        stem = path.stem
-        suffix = f".{target_language}.po" if parsed.file_type == "pot" else ".po"
-        output_path = str(path.with_name(f"{stem}{suffix}"))
-
-    Path(output_path).write_bytes(content)
+        stem = Path(filename).stem
+        file_type = suffix.lstrip(".").lower()
+        out_suffix = f".{target_language}.po" if file_type == "pot" else ".po"
+        output_path = f"{stem}{out_suffix}"
 
     return AutoTranslateResult(
         output_path=output_path,
         total_entries=len(parsed.entries),
         translated_entries=len(entry_results),
         proofread_applied=proofread_applied,
+        content=translated_content,
     )
 
 

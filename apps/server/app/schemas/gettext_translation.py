@@ -103,7 +103,8 @@ class CreateGettextTranslationJobRequest(BaseModel):
 
 
 class AutoTranslateRequest(BaseModel):
-    file_path: str = Field(description="本地 .po 或 .pot 文件的绝对路径")
+    file_content: str = Field(description=".po/.pot 文件的文本内容")
+    filename: str = Field(description="文件名（如 dms.pot），用于判断文件类型和生成输出文件名")
     source_language: str = Field(default="en_US", description="源语言代码")
     target_language: str = Field(default="zh_CN", description="目标语言代码")
     translation_mode: str = Field(
@@ -114,11 +115,11 @@ class AutoTranslateRequest(BaseModel):
     chunk_size: int = Field(default=20, ge=1, le=200, description="每批翻译条目数")
     proofread: bool = Field(default=False, description="是否启用 AI 校对并自动应用建议")
     context_text: str = Field(default="", description="翻译上下文说明，留空则自动生成")
-    output_path: str | None = Field(default=None, description="输出文件路径，留空则输出到源文件同目录")
 
 
 class AutoTranslateResponse(BaseModel):
-    output_path: str = Field(description="翻译后文件的路径")
+    output_path: str = Field(description="建议的输出文件名")
     total_entries: int = Field(description="文件总条目数")
     translated_entries: int = Field(description="实际翻译的条目数")
     proofread_applied: int = Field(description="校对修改的条目数")
+    content: str = Field(description="翻译后的 .po 文件内容")
