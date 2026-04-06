@@ -9,12 +9,10 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends build-essential curl \
   && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir uv
-
 COPY apps/server/pyproject.toml apps/server/uv.lock apps/server/README.md ./
 COPY apps/server/app ./app
 
-RUN uv pip install --system --no-cache .
+RUN pip install --no-cache-dir .
 
 RUN mkdir -p /app/storage/uploads /app/storage/outputs
 
