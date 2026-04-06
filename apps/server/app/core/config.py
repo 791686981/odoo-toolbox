@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     default_overwrite_existing: bool = False
     context_sample_size: int = 8
 
+    mcp_api_key: str = ""
+
     model_config = SettingsConfigDict(
         env_prefix="TOOLBOX_",
         env_file=".env",

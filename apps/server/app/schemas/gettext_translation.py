@@ -100,3 +100,25 @@ class CreateGettextTranslationJobRequest(BaseModel):
     translation_mode: str = Field(default="blank", pattern="^(blank|blank_and_fuzzy|overwrite_all)$")
     chunk_size: int = Field(default=20, ge=1, le=200)
     concurrency: int = Field(default=1, ge=1, le=10)
+
+
+class AutoTranslateRequest(BaseModel):
+    file_path: str = Field(description="本地 .po 或 .pot 文件的绝对路径")
+    source_language: str = Field(default="en_US", description="源语言代码")
+    target_language: str = Field(default="zh_CN", description="目标语言代码")
+    translation_mode: str = Field(
+        default="blank",
+        pattern="^(blank|blank_and_fuzzy|overwrite_all)$",
+        description="翻译模式: blank=仅空白条目, blank_and_fuzzy=空白+模糊, overwrite_all=全部重译",
+    )
+    chunk_size: int = Field(default=20, ge=1, le=200, description="每批翻译条目数")
+    proofread: bool = Field(default=False, description="是否启用 AI 校对并自动应用建议")
+    context_text: str = Field(default="", description="翻译上下文说明，留空则自动生成")
+    output_path: str | None = Field(default=None, description="输出文件路径，留空则输出到源文件同目录")
+
+
+class AutoTranslateResponse(BaseModel):
+    output_path: str = Field(description="翻译后文件的路径")
+    total_entries: int = Field(description="文件总条目数")
+    translated_entries: int = Field(description="实际翻译的条目数")
+    proofread_applied: int = Field(description="校对修改的条目数")

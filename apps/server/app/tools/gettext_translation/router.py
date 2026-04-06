@@ -19,6 +19,8 @@ from app.models import (
     User,
 )
 from app.schemas.gettext_translation import (
+    AutoTranslateRequest,
+    AutoTranslateResponse,
     CreateGettextTranslationJobRequest,
     ExportGettextTranslationResponse,
     GettextContextDraftRequest,
@@ -33,6 +35,7 @@ from app.schemas.gettext_translation import (
 from app.services.openai_service import openai_service
 from app.services.file_service import store_generated_file
 from app.tools.gettext_translation.context_builder import build_context_draft
+from app.tools.gettext_translation.core import auto_translate as run_auto_translate
 from app.tools.gettext_translation.exporter import export_gettext_file
 from app.tools.gettext_translation.parser import parse_gettext_file
 from app.tools.gettext_translation.prompt_builder import build_gettext_proofread_prompts
@@ -467,3 +470,35 @@ def export_run(
     run.exported_file_id = exported_file.id
     db.commit()
     return ExportGettextTranslationResponse(file_id=exported_file.id, filename=exported_file.original_name)
+
+
+@router.post(
+    "/auto-translate",
+    response_model=AutoTranslateResponse,
+    tags=["mcp"],
+    summary="一键翻译 .po/.pot 文件",
+    description="解析本地 .po/.pot 文件，自动生成上下文、分块翻译、可选 AI 校对，输出翻译后的 .po 文件。",
+)
+def auto_translate(payload: AutoTranslateRequest) -> AutoTranslateResponse:
+    try:
+        result = run_auto_translate(
+            file_path=payload.file_path,
+            source_language=payload.source_language,
+            target_language=payload.target_language,
+            output_path=payload.output_path,
+            translation_mode=payload.translation_mode,
+            chunk_size=payload.chunk_size,
+            proofread=payload.proofread,
+            context_text=payload.context_text,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"翻译失败: {exc}") from exc
+
+    return AutoTranslateResponse(
+        output_path=result.output_path,
+        total_entries=result.total_entries,
+        translated_entries=result.translated_entries,
+        proofread_applied=result.proofread_applied,
+    )

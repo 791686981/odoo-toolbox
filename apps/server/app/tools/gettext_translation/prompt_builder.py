@@ -1,9 +1,22 @@
 from __future__ import annotations
 
 import json
-from typing import Sequence
+from typing import Protocol, Sequence, runtime_checkable
 
-from app.models.tools import GettextTranslationEntry
+
+@runtime_checkable
+class GettextEntryLike(Protocol):
+    entry_index: int
+    msgctxt: str
+    msgid: str
+    msgid_plural: str
+    msgstr: str
+    msgstr_plural: dict
+    comment: str
+    tcomment: str
+    occurrences: list
+    flags: list
+    is_plural: bool
 
 
 def build_gettext_context_prompts(
@@ -35,7 +48,7 @@ def build_gettext_translation_prompts(
     context_text: str,
     source_language: str,
     target_language: str,
-    entries: Sequence[GettextTranslationEntry],
+    entries: Sequence[GettextEntryLike],
 ) -> tuple[str, str]:
     system_prompt = (
         "你是专业的 Gettext 翻译助手。"

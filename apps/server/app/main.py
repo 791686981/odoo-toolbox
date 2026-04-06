@@ -13,7 +13,7 @@ from app.api.jobs import router as jobs_router
 from app.api.settings import router as settings_router
 from app.api.tools import router as tools_router
 from app.core.config import settings
-from app.core.security import hash_password
+from app.core.security import hash_password, verify_password
 from app.db.base import Base
 from app.db import session as db_session
 from app.db.session import session_scope
@@ -39,6 +39,8 @@ def ensure_default_data() -> None:
                     password_hash=hash_password(settings.admin_password),
                 )
             )
+        elif not verify_password(settings.admin_password, admin.password_hash):
+            admin.password_hash = hash_password(settings.admin_password)
 
         defaults = {
             "default_source_language": settings.default_source_language,
@@ -80,7 +82,29 @@ def create_app() -> FastAPI:
     app.include_router(platform_runs_router, prefix="/api")
     app.include_router(settings_router, prefix="/api")
     app.include_router(tools_router, prefix="/api")
+
+    if settings.mcp_api_key:
+        _mount_mcp(app)
+
     return app
+
+
+def _mount_mcp(app: FastAPI) -> None:
+    from fastapi import Depends
+    from fastapi_mcp import AuthConfig, FastApiMCP
+
+    from app.api.deps import verify_mcp_token
+
+    mcp = FastApiMCP(
+        app,
+        name="Odoo Gettext Translator",
+        description="Odoo Gettext .po/.pot 文件自动翻译工具",
+        include_tags=["mcp"],
+        auth_config=AuthConfig(
+            dependencies=[Depends(verify_mcp_token)],
+        ),
+    )
+    mcp.mount_http()
 
 
 app = create_app()
