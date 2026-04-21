@@ -133,6 +133,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  deleteDatabaseBackupNode: (nodeId: string) =>
+    request<void>(`/api/database-backups/nodes/${nodeId}`, {
+      method: "DELETE",
+      skipJson: true,
+    }),
   markDatabaseBackupMainRoot: (nodeId: string) =>
     request<DatabaseBackupDetailRecord>(`/api/database-backups/nodes/${nodeId}/mark-main-root`, {
       method: "POST",

@@ -19,6 +19,7 @@ from app.services.database_backup_service import (
     build_database_backup_tree_response,
     build_database_backup_zip_headers,
     create_database_backup_node,
+    delete_database_backup_leaf_node,
     load_database_backup_detail,
     mark_database_backup_main_root,
     serialize_database_backup_detail,
@@ -73,6 +74,16 @@ def create_database_backup_node_api(
         username=user.username,
     )
     return serialize_database_backup_detail(node, file_record)
+
+
+@router.delete("/database-backups/nodes/{node_id}", status_code=204)
+def delete_database_backup_node(
+    node_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    delete_database_backup_leaf_node(db, node_id)
+    return Response(status_code=204)
 
 
 @router.get("/database-backups/nodes/{node_id}", response_model=DatabaseBackupDetailResponse)

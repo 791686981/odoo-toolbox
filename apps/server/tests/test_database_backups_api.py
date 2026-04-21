@@ -235,6 +235,69 @@ def test_database_backup_node_rejects_missing_parent(tmp_path) -> None:
         assert response.json()["detail"] == "父节点不存在。"
 
 
+def test_database_backup_node_delete_allows_leaf_only(tmp_path) -> None:
+    from app.core.config import settings
+    from app.db.session import configure_database
+    from app.main import create_app
+
+    settings.database_url = f"sqlite:///{tmp_path / 'app.db'}"
+    settings.upload_dir = tmp_path / "uploads"
+    settings.output_dir = tmp_path / "outputs"
+    settings.eager_tasks = True
+    settings.admin_username = "admin"
+    settings.admin_password = "admin123456"
+    configure_database()
+
+    app = create_app()
+    with TestClient(app) as client:
+        login_response = client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123456"},
+        )
+        assert login_response.status_code == 200
+
+        root_response = client.post(
+            "/api/database-backups/nodes",
+            data={
+                "name": "prod-main",
+                "source_type": "root",
+                "is_main_root": "true",
+                "note": "main root",
+            },
+            files={"file": ("prod-main.zip", _zip_bytes("root.txt", b"root-bytes"), "application/zip")},
+        )
+        assert root_response.status_code == 200
+        root_payload = root_response.json()
+
+        child_response = client.post(
+            "/api/database-backups/nodes",
+            data={
+                "name": "prod-main-leaf",
+                "source_type": "branch",
+                "parent_id": root_payload["id"],
+                "is_main_root": "false",
+                "note": "leaf branch",
+            },
+            files={"file": ("prod-main-leaf.zip", _zip_bytes("leaf.txt", b"leaf-bytes"), "application/zip")},
+        )
+        assert child_response.status_code == 200
+        child_payload = child_response.json()
+
+        blocked_response = client.delete(f"/api/database-backups/nodes/{root_payload['id']}")
+        assert blocked_response.status_code == 400
+        assert blocked_response.json()["detail"] == "只能删除没有子节点的备份节点。"
+
+        delete_response = client.delete(f"/api/database-backups/nodes/{child_payload['id']}")
+        assert delete_response.status_code == 204
+
+        tree_response = client.get("/api/database-backups/tree")
+        assert tree_response.status_code == 200
+        assert tree_response.json()["items"][0]["children"] == []
+
+        zip_response = client.get(f"/api/database-backups/nodes/{child_payload['id']}/zip")
+        assert zip_response.status_code == 404
+
+
 def test_database_backups_detail_patch_mark_main_root_and_zip_download(tmp_path) -> None:
     from app.core.config import settings
     from app.db.session import configure_database

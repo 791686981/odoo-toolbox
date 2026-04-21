@@ -11,7 +11,7 @@ import zipfile
 from typing import Iterable
 
 from fastapi import HTTPException, UploadFile
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -236,6 +236,30 @@ def update_database_backup_detail(
     db.commit()
     db.refresh(node)
     return node
+
+
+def delete_database_backup_leaf_node(
+    db: Session,
+    node_id: str,
+) -> None:
+    node, file_record = load_database_backup_detail(db, node_id)
+    child_exists = db.execute(
+        select(DatabaseBackupNode.id).where(DatabaseBackupNode.parent_id == node.id).limit(1),
+    ).first()
+    if child_exists:
+        raise HTTPException(status_code=400, detail="只能删除没有子节点的备份节点。")
+
+    stored_path = Path(file_record.stored_path)
+    try:
+        db.delete(node)
+        db.flush()
+        db.delete(file_record)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    stored_path.unlink(missing_ok=True)
 
 
 def mark_database_backup_main_root(

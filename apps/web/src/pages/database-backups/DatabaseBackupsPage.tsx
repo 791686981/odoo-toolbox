@@ -1,6 +1,6 @@
-import { DownloadOutlined, FileZipOutlined } from "@ant-design/icons";
+import { DeleteOutlined, DownloadOutlined, FileZipOutlined, SaveOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Card, Empty, Spin, Tabs, Tag, Tree, Typography, message } from "antd";
+import { Button, Card, Empty, Form, Input, Spin, Tabs, Tag, Tree, Typography, message } from "antd";
 import type { DataNode } from "antd/es/tree";
 import { useEffect, useMemo, useState } from "react";
 
@@ -18,11 +18,40 @@ import { databaseBackupSpec } from "./databaseBackupSpec";
 
 type ModalState =
   | { mode: "create-root" }
-  | { mode: "create-child"; parentId: string }
-  | { mode: "edit" };
+  | { mode: "create-child"; parentId: string };
+
+type DetailFormValues = {
+  name: string;
+  note: string;
+};
 
 function flattenTree(nodes: DatabaseBackupTreeNodeRecord[]): DatabaseBackupTreeNodeRecord[] {
   return nodes.flatMap((node) => [node, ...flattenTree(node.children)]);
+}
+
+function findNodeById(
+  nodes: DatabaseBackupTreeNodeRecord[],
+  nodeId: string | null,
+): DatabaseBackupTreeNodeRecord | undefined {
+  if (!nodeId) {
+    return undefined;
+  }
+
+  for (const node of nodes) {
+    if (node.id === nodeId) {
+      return node;
+    }
+    const child = findNodeById(node.children, nodeId);
+    if (child) {
+      return child;
+    }
+  }
+
+  return undefined;
+}
+
+function treeContainsNode(root: DatabaseBackupTreeNodeRecord, nodeId: string | null) {
+  return Boolean(findNodeById([root], nodeId));
 }
 
 function buildTreeData(nodes: DatabaseBackupTreeNodeRecord[]): DataNode[] {
@@ -110,12 +139,103 @@ function PanelLoading(props: { message: string }) {
   );
 }
 
+function DatabaseBackupDetailEditor(props: {
+  detail: DatabaseBackupDetailRecord;
+  canDelete: boolean;
+  isSaving: boolean;
+  isDeleting: boolean;
+  onSave: (values: DetailFormValues) => Promise<void>;
+  onDelete: () => Promise<void>;
+}) {
+  const { detail, canDelete, isSaving, isDeleting, onSave, onDelete } = props;
+  const [form] = Form.useForm<DetailFormValues>();
+
+  useEffect(() => {
+    form.setFieldsValue({
+      name: detail.name,
+      note: detail.note,
+    });
+  }, [detail, form]);
+
+  return (
+    <Form form={form} layout="vertical" className="database-backup-detail" onFinish={onSave}>
+      <div className="database-backup-detail-header">
+        <div className="database-backup-detail-title">
+          <Typography.Title level={3} className="panel-title">
+            {detail.name}
+          </Typography.Title>
+          <div className="database-backup-detail-tags">
+            <Tag color={detail.is_main_root ? "gold" : "default"}>
+              {detail.is_main_root ? "主线" : "分支"}
+            </Tag>
+            <Tag color={detail.source_type === "root" ? "blue" : "geekblue"}>
+              {formatSourceType(detail)}
+            </Tag>
+          </div>
+        </div>
+        <div className="database-backup-detail-actions">
+          <Button htmlType="submit" type="primary" icon={<SaveOutlined />} loading={isSaving} aria-label="保存">
+            保存
+          </Button>
+          <Button icon={<DownloadOutlined />} href={api.databaseBackupZipUrl(detail.id)}>
+            下载 Zip
+          </Button>
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            disabled={!canDelete}
+            loading={isDeleting}
+            aria-label="删除节点"
+            onClick={() => {
+              void onDelete();
+            }}
+          >
+            删除节点
+          </Button>
+        </div>
+      </div>
+
+      <div className="database-backup-detail-edit">
+        <Form.Item name="name" label="节点名" rules={[{ required: true, message: "请输入节点名" }]}>
+          <Input />
+        </Form.Item>
+        <Form.Item name="note" label="备注">
+          <Input.TextArea rows={5} />
+        </Form.Item>
+      </div>
+
+      <div className="database-backup-detail-grid">
+        <DetailField label="来源类型" value={formatSourceType(detail)} />
+        <DetailField label="创建时间" value={formatDateTime(detail.created_at)} />
+      </div>
+
+      <div className="database-backup-detail-zip">
+        <div className="database-backup-detail-zip-icon">
+          <FileZipOutlined />
+        </div>
+        <div className="database-backup-detail-zip-body">
+          <strong>{detail.zip.filename}</strong>
+          <span>
+            {detail.zip.mime_type} · {formatFileSize(detail.zip.size)}
+          </span>
+          <code>{detail.zip.sha256}</code>
+        </div>
+      </div>
+    </Form>
+  );
+}
+
 function DatabaseBackupDetailPanel(props: {
   detail: DatabaseBackupDetailRecord | undefined;
   isLoading: boolean;
   isError: boolean;
+  canDelete: boolean;
+  isSaving: boolean;
+  isDeleting: boolean;
+  onSave: (values: DetailFormValues) => Promise<void>;
+  onDelete: () => Promise<void>;
 }) {
-  const { detail, isLoading, isError } = props;
+  const { detail, isLoading, isError, canDelete, isSaving, isDeleting, onSave, onDelete } = props;
 
   if (isLoading) {
     return <PanelLoading message="正在加载节点详情..." />;
@@ -138,53 +258,14 @@ function DatabaseBackupDetailPanel(props: {
   }
 
   return (
-    <div className="database-backup-detail">
-      <div className="database-backup-detail-header">
-        <div className="database-backup-detail-title">
-          <Typography.Title level={3} className="panel-title">
-            {detail.name}
-          </Typography.Title>
-          <div className="database-backup-detail-tags">
-            <Tag color={detail.is_main_root ? "gold" : "default"}>
-              {detail.is_main_root ? "主线" : "分支"}
-            </Tag>
-            <Tag color={detail.source_type === "root" ? "blue" : "geekblue"}>
-              {formatSourceType(detail)}
-            </Tag>
-          </div>
-        </div>
-        <Button
-          type="primary"
-          icon={<DownloadOutlined />}
-          href={api.databaseBackupZipUrl(detail.id)}
-        >
-          下载 Zip
-        </Button>
-      </div>
-
-      <div className="database-backup-detail-grid">
-        <DetailField label="来源类型" value={formatSourceType(detail)} />
-        <DetailField label="创建时间" value={formatDateTime(detail.created_at)} />
-      </div>
-
-      <div className="database-backup-detail-note">
-        <span>备注</span>
-        <p>{detail.note || "当前没有备注说明。"}</p>
-      </div>
-
-      <div className="database-backup-detail-zip">
-        <div className="database-backup-detail-zip-icon">
-          <FileZipOutlined />
-        </div>
-        <div className="database-backup-detail-zip-body">
-          <strong>{detail.zip.filename}</strong>
-          <span>
-            {detail.zip.mime_type} · {formatFileSize(detail.zip.size)}
-          </span>
-          <code>{detail.zip.sha256}</code>
-        </div>
-      </div>
-    </div>
+    <DatabaseBackupDetailEditor
+      detail={detail}
+      canDelete={canDelete}
+      isSaving={isSaving}
+      isDeleting={isDeleting}
+      onSave={onSave}
+      onDelete={onDelete}
+    />
   );
 }
 
@@ -212,7 +293,9 @@ function DatabaseBackupSpecPanel() {
 }
 
 export function DatabaseBackupsPage() {
+  const [selectedRootId, setSelectedRootId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [modalState, setModalState] = useState<ModalState | null>(null);
   const queryClient = useQueryClient();
 
@@ -228,19 +311,45 @@ export function DatabaseBackupsPage() {
       return;
     }
 
-    const flatNodes = flattenTree(treeQuery.data.items);
-    if (!flatNodes.length) {
+    if (!treeQuery.data.items.length) {
+      setSelectedRootId(null);
       setSelectedNodeId(null);
       return;
     }
 
-    const stillExists = selectedNodeId && flatNodes.some((node) => node.id === selectedNodeId);
-    if (stillExists) {
+    const rootStillExists = selectedRootId && treeQuery.data.items.some((node) => node.id === selectedRootId);
+    const nextRootId = rootStillExists
+      ? selectedRootId
+      : pickDefaultNodeId(treeQuery.data.items, treeQuery.data.main_root_id);
+    const nextRoot = treeQuery.data.items.find((node) => node.id === nextRootId);
+
+    if (nextRootId !== selectedRootId) {
+      setSelectedRootId(nextRootId);
+    }
+
+    if (!nextRoot) {
+      setSelectedNodeId(null);
       return;
     }
 
-    setSelectedNodeId(pickDefaultNodeId(treeQuery.data.items, treeQuery.data.main_root_id));
-  }, [selectedNodeId, treeQuery.data]);
+    if (!treeContainsNode(nextRoot, selectedNodeId)) {
+      setSelectedNodeId(nextRoot.id);
+    }
+  }, [selectedNodeId, selectedRootId, treeQuery.data]);
+
+  const selectedRoot = useMemo(
+    () => treeItems.find((node) => node.id === selectedRootId),
+    [selectedRootId, treeItems],
+  );
+
+  useEffect(() => {
+    if (!selectedRoot) {
+      setExpandedKeys([]);
+      return;
+    }
+
+    setExpandedKeys(flattenTree(selectedRoot.children).map((node) => node.id));
+  }, [selectedRootId]);
 
   const detailQuery = useQuery({
     queryKey: ["database-backups", "node", selectedNodeId],
@@ -253,6 +362,11 @@ export function DatabaseBackupsPage() {
     onSuccess: async (payload) => {
       await queryClient.invalidateQueries({ queryKey: ["database-backups", "tree"] });
       await queryClient.invalidateQueries({ queryKey: ["database-backups", "node", payload.id] });
+      if (!payload.parent_id) {
+        setSelectedRootId(payload.id);
+      } else {
+        setExpandedKeys((keys) => Array.from(new Set([...keys, payload.parent_id!])));
+      }
       setSelectedNodeId(payload.id);
       setModalState(null);
       message.success("数据库备份节点已创建");
@@ -276,6 +390,17 @@ export function DatabaseBackupsPage() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (nodeId: string) => api.deleteDatabaseBackupNode(nodeId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["database-backups", "tree"] });
+      message.success("备份节点已删除");
+    },
+    onError: (error: Error) => {
+      message.error(error.message);
+    },
+  });
+
   const markMainRootMutation = useMutation({
     mutationFn: (nodeId: string) => api.markDatabaseBackupMainRoot(nodeId),
     onSuccess: async (payload) => {
@@ -288,29 +413,49 @@ export function DatabaseBackupsPage() {
     },
   });
 
-  const expandedKeys = useMemo(() => flattenTree(treeItems).map((node) => node.id), [treeItems]);
-  const treeData = useMemo(() => buildTreeData(treeItems), [treeItems]);
+  const selectedTreeNode = useMemo(
+    () => findNodeById(treeItems, selectedNodeId),
+    [selectedNodeId, treeItems],
+  );
+  const branchTreeData = useMemo(() => buildTreeData(selectedRoot?.children ?? []), [selectedRoot]);
+  const selectedNodeIsRoot = Boolean(selectedNodeId && selectedNodeId === selectedRootId);
+  const canDeleteSelectedNode = Boolean(selectedTreeNode && selectedTreeNode.children.length === 0);
 
-  const editInitialValues = detailQuery.data
-    ? {
-        name: detailQuery.data.name,
-        note: detailQuery.data.note,
-      }
-    : undefined;
+  function handleSelectRoot(root: DatabaseBackupTreeNodeRecord) {
+    setSelectedRootId(root.id);
+    setSelectedNodeId(root.id);
+    setExpandedKeys(flattenTree(root.children).map((node) => node.id));
+  }
 
-  async function handleSubmit(values: DatabaseBackupNodeFormValues) {
-    if (!modalState) {
+  async function handleSaveDetail(values: DetailFormValues) {
+    if (!detailQuery.data) {
       return;
     }
 
-    if (modalState.mode === "edit" && detailQuery.data) {
-      await updateMutation.mutateAsync({
-        nodeId: detailQuery.data.id,
-        payload: {
-          name: values.name,
-          note: values.note,
-        },
-      });
+    await updateMutation.mutateAsync({
+      nodeId: detailQuery.data.id,
+      payload: {
+        name: values.name,
+        note: values.note,
+      },
+    });
+  }
+
+  async function handleDeleteDetail() {
+    if (!detailQuery.data || !selectedTreeNode || !canDeleteSelectedNode) {
+      return;
+    }
+
+    const nextSelectedNodeId = selectedTreeNode.parent_id;
+    await deleteMutation.mutateAsync(detailQuery.data.id);
+    setSelectedNodeId(nextSelectedNodeId);
+    if (detailQuery.data.id === selectedRootId) {
+      setSelectedRootId(null);
+    }
+  }
+
+  async function handleSubmit(values: DatabaseBackupNodeFormValues) {
+    if (!modalState) {
       return;
     }
 
@@ -346,9 +491,6 @@ export function DatabaseBackupsPage() {
           >
             新增子节点
           </Button>
-          <Button disabled={!detailQuery.data} onClick={() => setModalState({ mode: "edit" })}>
-            编辑节点
-          </Button>
           <Button
             disabled={!detailQuery.data || detailQuery.data.parent_id !== null || detailQuery.data.is_main_root}
             loading={markMainRootMutation.isPending}
@@ -365,33 +507,68 @@ export function DatabaseBackupsPage() {
               label: "版本树",
               children: (
                 <div className="database-backup-layout">
-                  <section className="database-backup-panel database-backup-tree-panel">
+                  <section className="database-backup-panel database-backup-root-panel">
                     <div className="database-backup-panel-head">
-                      <Typography.Text className="section-kicker">Version Tree</Typography.Text>
+                      <Typography.Text className="section-kicker">Roots</Typography.Text>
                       <Typography.Title level={3} className="panel-title">
-                        备份版本树
+                        根节点
+                      </Typography.Title>
+                    </div>
+
+                    {treeQuery.isLoading ? (
+                      <PanelLoading message="正在加载根节点..." />
+                    ) : treeItems.length ? (
+                      <div className="database-backup-root-list">
+                        {treeItems.map((root) => (
+                          <button
+                            key={root.id}
+                            type="button"
+                            className={`database-backup-root-item${root.id === selectedRootId ? " is-active" : ""}`}
+                            onClick={() => handleSelectRoot(root)}
+                          >
+                            <span>{root.name}</span>
+                            {root.is_main_root ? <Tag color="gold">主线</Tag> : null}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="database-backup-panel-state">
+                        <Empty description="当前还没有备份根节点。" />
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="database-backup-panel database-backup-branch-tree-panel">
+                    <div className="database-backup-panel-head">
+                      <Typography.Text className="section-kicker">Branches</Typography.Text>
+                      <Typography.Title level={3} className="panel-title">
+                        分支树
                       </Typography.Title>
                       <Typography.Paragraph className="panel-copy">
-                        默认定位主线根节点，左侧浏览备份分支结构，右侧查看当前节点详情与 Zip 摘要。
+                        选择左侧根节点后，在这里浏览它下面的升级分支。
                       </Typography.Paragraph>
                     </div>
 
                     {treeQuery.isLoading ? (
-                      <PanelLoading message="正在加载版本树..." />
-                    ) : treeItems.length ? (
+                      <PanelLoading message="正在加载分支树..." />
+                    ) : selectedRoot?.children.length ? (
                       <Tree
                         className="database-backup-tree"
                         showLine
-                        selectedKeys={selectedNodeId ? [selectedNodeId] : []}
+                        autoExpandParent={false}
+                        selectedKeys={selectedNodeId && !selectedNodeIsRoot ? [selectedNodeId] : []}
                         expandedKeys={expandedKeys}
-                        treeData={treeData}
+                        treeData={branchTreeData}
+                        onExpand={(keys) => {
+                          setExpandedKeys(keys.map(String));
+                        }}
                         onSelect={(keys) => {
-                          setSelectedNodeId((keys[0] as string | undefined) ?? null);
+                          setSelectedNodeId((keys[0] as string | undefined) ?? selectedRoot.id);
                         }}
                       />
                     ) : (
                       <div className="database-backup-panel-state">
-                        <Empty description="当前还没有备份节点，后续任务中创建主线节点后会显示在这里。" />
+                        <Empty description="当前根节点还没有分支节点。" />
                       </div>
                     )}
                   </section>
@@ -407,6 +584,11 @@ export function DatabaseBackupsPage() {
                       detail={detailQuery.data}
                       isLoading={detailQuery.isLoading}
                       isError={detailQuery.isError}
+                      canDelete={canDeleteSelectedNode}
+                      isSaving={updateMutation.isPending}
+                      isDeleting={deleteMutation.isPending}
+                      onSave={handleSaveDetail}
+                      onDelete={handleDeleteDetail}
                     />
                   </section>
                 </div>
@@ -424,7 +606,6 @@ export function DatabaseBackupsPage() {
       <DatabaseBackupNodeForm
         open={modalState !== null}
         mode={(modalState?.mode ?? "create-root") as DatabaseBackupNodeFormMode}
-        initialValues={modalState?.mode === "edit" ? editInitialValues : undefined}
         submitting={createMutation.isPending || updateMutation.isPending}
         onCancel={() => setModalState(null)}
         onSubmit={handleSubmit}

@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,6 +10,7 @@ const apiMock = vi.hoisted(() => ({
   databaseBackupNode: vi.fn(),
   createDatabaseBackupNode: vi.fn(),
   updateDatabaseBackupNode: vi.fn(),
+  deleteDatabaseBackupNode: vi.fn(),
   markDatabaseBackupMainRoot: vi.fn(),
   databaseBackupZipUrl: vi.fn(),
 }));
@@ -20,6 +21,7 @@ vi.mock("../../shared/api/client", () => ({
     databaseBackupNode: apiMock.databaseBackupNode,
     createDatabaseBackupNode: apiMock.createDatabaseBackupNode,
     updateDatabaseBackupNode: apiMock.updateDatabaseBackupNode,
+    deleteDatabaseBackupNode: apiMock.deleteDatabaseBackupNode,
     markDatabaseBackupMainRoot: apiMock.markDatabaseBackupMainRoot,
     databaseBackupZipUrl: apiMock.databaseBackupZipUrl,
   },
@@ -101,13 +103,51 @@ describe("DatabaseBackupsPage", () => {
               source_type: "branch",
               is_main_root: false,
               created_at: "2026-04-21T10:00:00Z",
-              children: [],
+              children: [
+                {
+                  id: "leaf-1",
+                  name: "prod-main-uat-check",
+                  database_name: "prod_main_uat_check",
+                  odoo_version: "18.0",
+                  parent_id: "branch-1",
+                  source_type: "branch",
+                  is_main_root: false,
+                  created_at: "2026-04-21T11:00:00Z",
+                  children: [],
+                },
+              ],
             },
           ],
         },
       ],
     });
-    apiMock.databaseBackupNode.mockResolvedValue(buildDetail());
+    apiMock.databaseBackupNode.mockImplementation((nodeId: string) => {
+      if (nodeId === "branch-1") {
+        return Promise.resolve(
+          buildDetail({
+            id: "branch-1",
+            name: "prod-main-uat",
+            parent_id: "root-1",
+            source_type: "branch",
+            is_main_root: false,
+            note: "UAT 分支备份。",
+          }),
+        );
+      }
+      if (nodeId === "leaf-1") {
+        return Promise.resolve(
+          buildDetail({
+            id: "leaf-1",
+            name: "prod-main-uat-check",
+            parent_id: "branch-1",
+            source_type: "branch",
+            is_main_root: false,
+            note: "末端验证备份。",
+          }),
+        );
+      }
+      return Promise.resolve(buildDetail());
+    });
     apiMock.createDatabaseBackupNode.mockResolvedValue(buildDetail({ id: "new-root" }));
     apiMock.updateDatabaseBackupNode.mockResolvedValue(
       buildDetail({
@@ -116,6 +156,7 @@ describe("DatabaseBackupsPage", () => {
         updated_at: "2026-04-21T10:00:00Z",
       }),
     );
+    apiMock.deleteDatabaseBackupNode.mockResolvedValue(undefined);
     apiMock.markDatabaseBackupMainRoot.mockResolvedValue(buildDetail({ is_main_root: true }));
     apiMock.databaseBackupZipUrl.mockReturnValue("/api/database-backups/nodes/root-1/zip");
   });
@@ -130,6 +171,27 @@ describe("DatabaseBackupsPage", () => {
     renderPage();
 
     expect(await screen.findByText("prod-main")).toBeInTheDocument();
+  });
+
+  it("根节点显示在独立入口，分支树不重复显示根节点", async () => {
+    renderPage();
+
+    expect(await screen.findByRole("button", { name: /prod-main/ })).toBeInTheDocument();
+    const branchTreePanel = document.querySelector(".database-backup-branch-tree-panel");
+    expect(branchTreePanel).toBeInTheDocument();
+    expect(within(branchTreePanel as HTMLElement).queryByText("prod-main")).not.toBeInTheDocument();
+    expect(within(branchTreePanel as HTMLElement).getByText("prod-main-uat")).toBeInTheDocument();
+  });
+
+  it("分支树支持折叠节点", async () => {
+    renderPage();
+
+    expect(await screen.findByText("prod-main-uat-check")).toBeInTheDocument();
+    const switcher = document.querySelector<HTMLElement>(".database-backup-tree .ant-tree-switcher");
+    expect(switcher).toBeInTheDocument();
+    fireEvent.click(switcher!);
+
+    await waitFor(() => expect(screen.queryByText("prod-main-uat-check")).not.toBeInTheDocument());
   });
 
   it("默认选中节点后显示详情备注", async () => {
@@ -195,10 +257,9 @@ describe("DatabaseBackupsPage", () => {
     renderPage();
 
     await screen.findByText("生产主线数据库备份。");
-    fireEvent.click(await screen.findByRole("button", { name: "编辑节点" }));
     fireEvent.change(screen.getByLabelText("节点名"), { target: { value: "prod-main-renamed" } });
     fireEvent.change(screen.getByLabelText("备注"), { target: { value: "updated" } });
-    fireEvent.click(screen.getByRole("button", { name: /确\s*认/ }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() =>
       expect(apiMock.updateDatabaseBackupNode).toHaveBeenCalledWith("root-1", {
@@ -206,6 +267,16 @@ describe("DatabaseBackupsPage", () => {
         note: "updated",
       }),
     );
+  });
+
+  it("叶子节点可以从详情面板删除", async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByText("prod-main-uat-check"));
+    expect(await screen.findByText("末端验证备份。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "删除节点" }));
+
+    await waitFor(() => expect(apiMock.deleteDatabaseBackupNode).toHaveBeenCalledWith("leaf-1"));
   });
 
   it("从详情面板触发设为主线操作", async () => {
