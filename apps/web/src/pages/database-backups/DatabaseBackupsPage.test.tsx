@@ -151,11 +151,44 @@ describe("DatabaseBackupsPage", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "新建根节点" }));
     fireEvent.change(screen.getByLabelText("节点名"), { target: { value: "prod-main-20260422" } });
-    fireEvent.change(screen.getByLabelText("数据库名"), { target: { value: "prod_main_20260422" } });
-    fireEvent.change(screen.getByLabelText("Odoo 版本"), { target: { value: "18.0" } });
     fireEvent.click(screen.getByRole("button", { name: /确\s*认/ }));
 
     expect(await screen.findByText("请上传 zip 备份文件")).toBeInTheDocument();
+  });
+
+  it("创建节点表单只要求节点名和 zip 文件", async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "新建根节点" }));
+
+    expect(screen.getByLabelText("节点名")).toBeInTheDocument();
+    expect(screen.getByText("zip 备份文件")).toBeInTheDocument();
+    expect(screen.queryByLabelText("数据库名")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Odoo 版本")).not.toBeInTheDocument();
+  });
+
+  it("选择 zip 后创建节点会提交节点名和文件", async () => {
+    renderPage();
+    const file = new File(["zip-bytes"], "prod-main.zip", { type: "application/zip" });
+
+    fireEvent.click(await screen.findByRole("button", { name: "新建根节点" }));
+    fireEvent.change(screen.getByLabelText("节点名"), { target: { value: "prod-main-20260422" } });
+
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(fileInput).toBeInTheDocument();
+    fireEvent.change(fileInput!, { target: { files: [file] } });
+    fireEvent.click(screen.getByRole("button", { name: /确\s*认/ }));
+
+    await waitFor(() => expect(apiMock.createDatabaseBackupNode).toHaveBeenCalled());
+    const [payload] = apiMock.createDatabaseBackupNode.mock.calls[0];
+    expect(payload).toEqual(
+      expect.objectContaining({
+        name: "prod-main-20260422",
+        file,
+      }),
+    );
+    expect(payload).not.toHaveProperty("database_name");
+    expect(payload).not.toHaveProperty("odoo_version");
   });
 
   it("编辑节点时只提交可编辑字段", async () => {

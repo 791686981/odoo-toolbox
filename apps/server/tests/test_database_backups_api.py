@@ -39,6 +39,44 @@ def test_database_backups_tree_returns_empty_state(tmp_path) -> None:
         assert response.json() == {"main_root_id": None, "items": []}
 
 
+def test_database_backup_node_create_defaults_database_name_and_version(tmp_path) -> None:
+    from app.core.config import settings
+    from app.db.session import configure_database
+    from app.main import create_app
+
+    settings.database_url = f"sqlite:///{tmp_path / 'app.db'}"
+    settings.upload_dir = tmp_path / "uploads"
+    settings.output_dir = tmp_path / "outputs"
+    settings.eager_tasks = True
+    settings.admin_username = "admin"
+    settings.admin_password = "admin123456"
+    configure_database()
+
+    app = create_app()
+    with TestClient(app) as client:
+        login_response = client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123456"},
+        )
+        assert login_response.status_code == 200
+
+        response = client.post(
+            "/api/database-backups/nodes",
+            data={
+                "name": "prod-main-20260422",
+                "source_type": "root",
+                "is_main_root": "true",
+                "note": "main root",
+            },
+            files={"file": ("prod-main.zip", _zip_bytes("root.txt", b"root-bytes"), "application/zip")},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["database_name"] == "prod-main-20260422"
+        assert payload["odoo_version"] == ""
+
+
 def test_database_backup_node_create_root_and_child_populates_tree(tmp_path) -> None:
     from app.core.config import settings
     from app.db.session import configure_database

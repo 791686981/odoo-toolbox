@@ -31,7 +31,9 @@ function buildTreeData(nodes: DatabaseBackupTreeNodeRecord[]): DataNode[] {
     title: (
       <div className="database-backup-tree-title">
         <span className="database-backup-tree-name">{node.name}</span>
-        <span className="database-backup-tree-meta">{node.odoo_version}</span>
+        <span className="database-backup-tree-meta">
+          {node.is_main_root ? "主线根节点" : formatSourceType(node)}
+        </span>
       </div>
     ),
     children: buildTreeData(node.children),
@@ -67,7 +69,7 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
-function formatSourceType(detail: DatabaseBackupDetailRecord) {
+function formatSourceType(detail: Pick<DatabaseBackupDetailRecord, "source_type">) {
   return detail.source_type === "root" ? "主线基点" : "升级分支";
 }
 
@@ -161,8 +163,6 @@ function DatabaseBackupDetailPanel(props: {
       </div>
 
       <div className="database-backup-detail-grid">
-        <DetailField label="数据库名" value={detail.database_name} />
-        <DetailField label="Odoo 版本" value={detail.odoo_version} />
         <DetailField label="来源类型" value={formatSourceType(detail)} />
         <DetailField label="创建时间" value={formatDateTime(detail.created_at)} />
       </div>
@@ -294,8 +294,6 @@ export function DatabaseBackupsPage() {
   const editInitialValues = detailQuery.data
     ? {
         name: detailQuery.data.name,
-        database_name: detailQuery.data.database_name,
-        odoo_version: detailQuery.data.odoo_version,
         note: detailQuery.data.note,
       }
     : undefined;
@@ -318,8 +316,6 @@ export function DatabaseBackupsPage() {
 
     await createMutation.mutateAsync({
       name: values.name,
-      database_name: values.database_name,
-      odoo_version: values.odoo_version,
       source_type: modalState.mode === "create-root" ? "root" : "branch",
       parent_id: modalState.mode === "create-child" ? modalState.parentId : null,
       is_main_root: modalState.mode === "create-root" && treeItems.length === 0,

@@ -6,8 +6,6 @@ export type DatabaseBackupNodeFormMode = "create-root" | "create-child" | "edit"
 
 export type DatabaseBackupNodeFormValues = {
   name: string;
-  database_name: string;
-  odoo_version: string;
   note: string;
   file?: File;
 };
@@ -23,25 +21,28 @@ type Props = {
 
 export function DatabaseBackupNodeForm(props: Props) {
   const { mode, open, initialValues, submitting, onCancel, onSubmit } = props;
-  const [form] = Form.useForm<DatabaseBackupNodeFormValues>();
+  const [form] = Form.useForm<Omit<DatabaseBackupNodeFormValues, "file">>();
   const [fileList, setFileList] = useState<UploadFile[]>([]);
+  const [selectedFile, setSelectedFile] = useState<File | undefined>();
+  const [fileError, setFileError] = useState<string | undefined>();
   const isEdit = mode === "edit";
 
   useEffect(() => {
     if (!open) {
       form.resetFields();
       setFileList([]);
+      setSelectedFile(undefined);
+      setFileError(undefined);
       return;
     }
 
     form.setFieldsValue({
       name: initialValues?.name ?? "",
-      database_name: initialValues?.database_name ?? "",
-      odoo_version: initialValues?.odoo_version ?? "",
       note: initialValues?.note ?? "",
-      file: undefined,
     });
     setFileList([]);
+    setSelectedFile(undefined);
+    setFileError(undefined);
   }, [form, initialValues, open]);
 
   const title = useMemo(() => {
@@ -53,15 +54,28 @@ export function DatabaseBackupNodeForm(props: Props) {
 
   const beforeUpload: UploadProps["beforeUpload"] = (file) => {
     setFileList([file]);
-    form.setFieldValue("file", file as File);
+    setSelectedFile(file as File);
+    setFileError(undefined);
     return false;
   };
 
   const handleRemove = () => {
     setFileList([]);
-    form.setFieldValue("file", undefined);
+    setSelectedFile(undefined);
     return true;
   };
+
+  async function handleOk() {
+    const values = await form.validateFields();
+    if (!isEdit && !selectedFile) {
+      setFileError("请上传 zip 备份文件");
+      return;
+    }
+    await onSubmit({
+      ...values,
+      file: selectedFile,
+    });
+  }
 
   return (
     <Modal
@@ -72,35 +86,21 @@ export function DatabaseBackupNodeForm(props: Props) {
       forceRender
       confirmLoading={submitting}
       onCancel={onCancel}
-      onOk={() => form.submit()}
+      onOk={handleOk}
       destroyOnHidden
     >
-      <Form form={form} layout="vertical" onFinish={onSubmit}>
+      <Form form={form} layout="vertical">
         <Form.Item name="name" label="节点名" rules={[{ required: true, message: "请输入节点名" }]}>
           <Input />
-        </Form.Item>
-        <Form.Item
-          name="database_name"
-          label="数据库名"
-          rules={[{ required: !isEdit, message: "请输入数据库名" }]}
-        >
-          <Input disabled={isEdit} />
-        </Form.Item>
-        <Form.Item
-          name="odoo_version"
-          label="Odoo 版本"
-          rules={[{ required: !isEdit, message: "请输入 Odoo 版本" }]}
-        >
-          <Input disabled={isEdit} />
         </Form.Item>
         <Form.Item name="note" label="备注">
           <Input.TextArea rows={4} />
         </Form.Item>
         {!isEdit ? (
           <Form.Item
-            name="file"
             label="zip 备份文件"
-            rules={[{ required: true, message: "请上传 zip 备份文件" }]}
+            validateStatus={fileError ? "error" : undefined}
+            help={fileError}
           >
             <Upload beforeUpload={beforeUpload} onRemove={handleRemove} fileList={fileList} maxCount={1} accept=".zip">
               <Button>选择 zip 文件</Button>

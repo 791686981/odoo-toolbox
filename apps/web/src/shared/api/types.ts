@@ -66,8 +66,8 @@ export type DatabaseBackupDetailRecord = {
 
 export type CreateDatabaseBackupNodePayload = {
   name: string;
-  database_name: string;
-  odoo_version: string;
+  database_name?: string;
+  odoo_version?: string;
   source_type: DatabaseBackupSourceType;
   parent_id?: string | null;
   is_main_root?: boolean;

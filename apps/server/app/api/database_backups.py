@@ -50,8 +50,8 @@ def get_database_backup_tree(
 @router.post("/database-backups/nodes", response_model=DatabaseBackupDetailResponse)
 def create_database_backup_node_api(
     name: str = Form(...),
-    database_name: str = Form(...),
-    odoo_version: str = Form(...),
+    database_name: str | None = Form(None),
+    odoo_version: str = Form(""),
     source_type: str = Form(...),
     parent_id: str | None = Form(None),
     is_main_root: bool = Form(False),
@@ -63,8 +63,8 @@ def create_database_backup_node_api(
     node, file_record = create_database_backup_node(
         db,
         name=name,
-        database_name=database_name,
-        odoo_version=odoo_version,
+        database_name=database_name or name,
+        odoo_version=odoo_version or "",
         source_type=source_type,
         parent_id=parent_id,
         is_main_root=is_main_root,

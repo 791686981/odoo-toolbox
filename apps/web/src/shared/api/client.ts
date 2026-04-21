@@ -96,8 +96,12 @@ export const api = {
   createDatabaseBackupNode: async (payload: CreateDatabaseBackupNodePayload) => {
     const formData = new FormData();
     formData.append("name", payload.name);
-    formData.append("database_name", payload.database_name);
-    formData.append("odoo_version", payload.odoo_version);
+    if (payload.database_name) {
+      formData.append("database_name", payload.database_name);
+    }
+    if (payload.odoo_version !== undefined) {
+      formData.append("odoo_version", payload.odoo_version);
+    }
     formData.append("source_type", payload.source_type);
     if (payload.parent_id) {
       formData.append("parent_id", payload.parent_id);
