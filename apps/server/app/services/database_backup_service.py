@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 import hashlib
+from email.utils import format_datetime
 from datetime import datetime
 from datetime import timezone
 from pathlib import Path
@@ -204,3 +205,68 @@ def serialize_database_backup_detail(
             download_url=f"/api/database-backups/nodes/{node.id}/zip",
         ),
     )
+
+
+def load_database_backup_detail(
+    db: Session,
+    node_id: str,
+) -> tuple[DatabaseBackupNode, UploadedFile]:
+    node = db.get(DatabaseBackupNode, node_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="备份节点不存在。")
+
+    file_record = db.get(UploadedFile, node.zip_file_id)
+    if file_record is None:
+        raise HTTPException(status_code=404, detail="备份 zip 文件不存在。")
+
+    return node, file_record
+
+
+def update_database_backup_detail(
+    db: Session,
+    node: DatabaseBackupNode,
+    *,
+    name: str | None,
+    note: str | None,
+) -> DatabaseBackupNode:
+    if name is not None:
+        node.name = name
+    if note is not None:
+        node.note = note
+    db.commit()
+    db.refresh(node)
+    return node
+
+
+def mark_database_backup_main_root(
+    db: Session,
+    node: DatabaseBackupNode,
+) -> DatabaseBackupNode:
+    if node.parent_id is not None:
+        raise HTTPException(status_code=400, detail="只有根节点可以设置为主线节点。")
+
+    db.execute(
+        update(DatabaseBackupNode)
+        .where(DatabaseBackupNode.is_main_root.is_(True))
+        .where(DatabaseBackupNode.id != node.id)
+        .values(is_main_root=False)
+    )
+    node.is_main_root = True
+    db.commit()
+    db.refresh(node)
+    return node
+
+
+def build_database_backup_zip_headers(
+    file_record: UploadedFile,
+    file_path: Path,
+) -> dict[str, str]:
+    stat_result = file_path.stat()
+    last_modified = format_datetime(datetime.fromtimestamp(stat_result.st_mtime, tz=timezone.utc), usegmt=True)
+    return {
+        "content-type": file_record.mime_type,
+        "x-file-sha256": file_record.sha256,
+        "content-length": str(file_record.size),
+        "etag": f'"{file_record.sha256}"',
+        "last-modified": last_modified,
+    }

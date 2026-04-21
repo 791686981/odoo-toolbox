@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DatabaseBackupZipResponse(BaseModel):
@@ -43,6 +43,13 @@ class DatabaseBackupDetailResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     zip: DatabaseBackupZipResponse
+
+
+class DatabaseBackupPatchRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    name: str | None = None
+    note: str | None = None
 
 
 DatabaseBackupTreeNodeResponse.model_rebuild()

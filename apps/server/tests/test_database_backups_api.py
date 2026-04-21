@@ -195,3 +195,95 @@ def test_database_backup_node_rejects_missing_parent(tmp_path) -> None:
 
         assert response.status_code == 404
         assert response.json()["detail"] == "父节点不存在。"
+
+
+def test_database_backups_detail_patch_mark_main_root_and_zip_download(tmp_path) -> None:
+    from app.core.config import settings
+    from app.db.session import configure_database
+    from app.main import create_app
+
+    settings.database_url = f"sqlite:///{tmp_path / 'app.db'}"
+    settings.upload_dir = tmp_path / "uploads"
+    settings.output_dir = tmp_path / "outputs"
+    settings.eager_tasks = True
+    settings.admin_username = "admin"
+    settings.admin_password = "admin123456"
+    configure_database()
+
+    app = create_app()
+    with TestClient(app) as client:
+        login_response = client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123456"},
+        )
+        assert login_response.status_code == 200
+
+        first_root_response = client.post(
+            "/api/database-backups/nodes",
+            data={
+                "name": "prod-main-a",
+                "database_name": "prod_main_a",
+                "odoo_version": "18.0",
+                "source_type": "root",
+                "is_main_root": "true",
+                "note": "A",
+            },
+            files={"file": ("prod-main-a.zip", _zip_bytes("a.txt", b"a-bytes"), "application/zip")},
+        )
+        assert first_root_response.status_code == 200
+        first_root = first_root_response.json()
+
+        second_root_response = client.post(
+            "/api/database-backups/nodes",
+            data={
+                "name": "prod-main-b",
+                "database_name": "prod_main_b",
+                "odoo_version": "18.0",
+                "source_type": "root",
+                "is_main_root": "false",
+                "note": "B",
+            },
+            files={"file": ("prod-main-b.zip", _zip_bytes("b.txt", b"b-bytes"), "application/zip")},
+        )
+        assert second_root_response.status_code == 200
+        second_root = second_root_response.json()
+
+        detail_response = client.get(f"/api/database-backups/nodes/{first_root['id']}")
+        assert detail_response.status_code == 200
+        assert detail_response.json()["zip"]["download_url"] == f"/api/database-backups/nodes/{first_root['id']}/zip"
+
+        patch_response = client.patch(
+            f"/api/database-backups/nodes/{first_root['id']}",
+            json={"name": "prod-main-a-renamed", "note": "updated"},
+        )
+        assert patch_response.status_code == 200
+        assert patch_response.json()["name"] == "prod-main-a-renamed"
+        assert patch_response.json()["note"] == "updated"
+
+        forbidden_patch = client.patch(
+            f"/api/database-backups/nodes/{first_root['id']}",
+            json={"database_name": "should_fail"},
+        )
+        assert forbidden_patch.status_code == 400
+
+        mark_response = client.post(f"/api/database-backups/nodes/{second_root['id']}/mark-main-root")
+        assert mark_response.status_code == 200
+        assert mark_response.json()["is_main_root"] is True
+
+        tree_response = client.get("/api/database-backups/tree")
+        assert tree_response.status_code == 200
+        assert tree_response.json()["main_root_id"] == second_root["id"]
+
+        zip_response = client.get(f"/api/database-backups/nodes/{first_root['id']}/zip")
+        assert zip_response.status_code == 200
+        assert zip_response.headers["content-type"] == "application/zip"
+        with zipfile.ZipFile(io.BytesIO(zip_response.content)) as archive:
+            assert archive.read("a.txt") == b"a-bytes"
+
+        head_response = client.head(f"/api/database-backups/nodes/{first_root['id']}/zip")
+        assert head_response.status_code == 200
+        assert head_response.headers["content-type"] == "application/zip"
+        assert head_response.headers["x-file-sha256"] == detail_response.json()["zip"]["sha256"]
+        assert head_response.headers["etag"] == f'"{detail_response.json()["zip"]["sha256"]}"'
+        assert head_response.headers["last-modified"]
+        assert head_response.headers["content-length"] == str(len(zip_response.content))
