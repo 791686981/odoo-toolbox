@@ -1,6 +1,6 @@
 import { DownloadOutlined, FileZipOutlined } from "@ant-design/icons";
-import { useQuery } from "@tanstack/react-query";
-import { Button, Card, Empty, Spin, Tabs, Tag, Tree, Typography } from "antd";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, Card, Empty, Spin, Tabs, Tag, Tree, Typography, message } from "antd";
 import type { DataNode } from "antd/es/tree";
 import { useEffect, useMemo, useState } from "react";
 
@@ -9,7 +9,17 @@ import type {
   DatabaseBackupDetailRecord,
   DatabaseBackupTreeNodeRecord,
 } from "../../shared/api/types";
+import {
+  DatabaseBackupNodeForm,
+  type DatabaseBackupNodeFormMode,
+  type DatabaseBackupNodeFormValues,
+} from "./DatabaseBackupNodeForm";
 import { databaseBackupSpec } from "./databaseBackupSpec";
+
+type ModalState =
+  | { mode: "create-root" }
+  | { mode: "create-child"; parentId: string }
+  | { mode: "edit" };
 
 function flattenTree(nodes: DatabaseBackupTreeNodeRecord[]): DatabaseBackupTreeNodeRecord[] {
   return nodes.flatMap((node) => [node, ...flattenTree(node.children)]);
@@ -203,6 +213,8 @@ function DatabaseBackupSpecPanel() {
 
 export function DatabaseBackupsPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [modalState, setModalState] = useState<ModalState | null>(null);
+  const queryClient = useQueryClient();
 
   const treeQuery = useQuery({
     queryKey: ["database-backups", "tree"],
@@ -236,8 +248,85 @@ export function DatabaseBackupsPage() {
     enabled: Boolean(selectedNodeId),
   });
 
+  const createMutation = useMutation({
+    mutationFn: api.createDatabaseBackupNode,
+    onSuccess: async (payload) => {
+      await queryClient.invalidateQueries({ queryKey: ["database-backups", "tree"] });
+      await queryClient.invalidateQueries({ queryKey: ["database-backups", "node", payload.id] });
+      setSelectedNodeId(payload.id);
+      setModalState(null);
+      message.success("数据库备份节点已创建");
+    },
+    onError: (error: Error) => {
+      message.error(error.message);
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ nodeId, payload }: { nodeId: string; payload: { name?: string; note?: string } }) =>
+      api.updateDatabaseBackupNode(nodeId, payload),
+    onSuccess: async (payload) => {
+      await queryClient.invalidateQueries({ queryKey: ["database-backups", "tree"] });
+      await queryClient.invalidateQueries({ queryKey: ["database-backups", "node", payload.id] });
+      setModalState(null);
+      message.success("节点信息已更新");
+    },
+    onError: (error: Error) => {
+      message.error(error.message);
+    },
+  });
+
+  const markMainRootMutation = useMutation({
+    mutationFn: (nodeId: string) => api.markDatabaseBackupMainRoot(nodeId),
+    onSuccess: async (payload) => {
+      await queryClient.invalidateQueries({ queryKey: ["database-backups", "tree"] });
+      await queryClient.invalidateQueries({ queryKey: ["database-backups", "node", payload.id] });
+      message.success("已切换主线根节点");
+    },
+    onError: (error: Error) => {
+      message.error(error.message);
+    },
+  });
+
   const expandedKeys = useMemo(() => flattenTree(treeItems).map((node) => node.id), [treeItems]);
   const treeData = useMemo(() => buildTreeData(treeItems), [treeItems]);
+
+  const editInitialValues = detailQuery.data
+    ? {
+        name: detailQuery.data.name,
+        database_name: detailQuery.data.database_name,
+        odoo_version: detailQuery.data.odoo_version,
+        note: detailQuery.data.note,
+      }
+    : undefined;
+
+  async function handleSubmit(values: DatabaseBackupNodeFormValues) {
+    if (!modalState) {
+      return;
+    }
+
+    if (modalState.mode === "edit" && detailQuery.data) {
+      await updateMutation.mutateAsync({
+        nodeId: detailQuery.data.id,
+        payload: {
+          name: values.name,
+          note: values.note,
+        },
+      });
+      return;
+    }
+
+    await createMutation.mutateAsync({
+      name: values.name,
+      database_name: values.database_name,
+      odoo_version: values.odoo_version,
+      source_type: modalState.mode === "create-root" ? "root" : "branch",
+      parent_id: modalState.mode === "create-child" ? modalState.parentId : null,
+      is_main_root: modalState.mode === "create-root" && treeItems.length === 0,
+      note: values.note,
+      file: values.file!,
+    });
+  }
 
   return (
     <div className="page-stack">
@@ -253,6 +342,25 @@ export function DatabaseBackupsPage() {
       </section>
 
       <Card className="panel-card database-backup-card">
+        <div className="database-backups-page-actions">
+          <Button onClick={() => setModalState({ mode: "create-root" })}>新建根节点</Button>
+          <Button
+            disabled={!detailQuery.data}
+            onClick={() => detailQuery.data && setModalState({ mode: "create-child", parentId: detailQuery.data.id })}
+          >
+            新增子节点
+          </Button>
+          <Button disabled={!detailQuery.data} onClick={() => setModalState({ mode: "edit" })}>
+            编辑节点
+          </Button>
+          <Button
+            disabled={!detailQuery.data || detailQuery.data.parent_id !== null || detailQuery.data.is_main_root}
+            loading={markMainRootMutation.isPending}
+            onClick={() => detailQuery.data && markMainRootMutation.mutate(detailQuery.data.id)}
+          >
+            设为主线
+          </Button>
+        </div>
         <Tabs
           defaultActiveKey="tree"
           items={[
@@ -316,6 +424,15 @@ export function DatabaseBackupsPage() {
           ]}
         />
       </Card>
+
+      <DatabaseBackupNodeForm
+        open={modalState !== null}
+        mode={(modalState?.mode ?? "create-root") as DatabaseBackupNodeFormMode}
+        initialValues={modalState?.mode === "edit" ? editInitialValues : undefined}
+        submitting={createMutation.isPending || updateMutation.isPending}
+        onCancel={() => setModalState(null)}
+        onSubmit={handleSubmit}
+      />
     </div>
   );
 }
