@@ -194,6 +194,40 @@ describe("DatabaseBackupsPage", () => {
     await waitFor(() => expect(screen.queryByText("prod-main-uat-check")).not.toBeInTheDocument());
   });
 
+  it("新增分支按钮会根据当前节点切换文案", async () => {
+    renderPage();
+
+    expect(await screen.findAllByRole("button", { name: "新增一级分支" })).not.toHaveLength(0);
+
+    fireEvent.click(await screen.findByText("prod-main-uat"));
+
+    expect(await screen.findAllByRole("button", { name: "新增子分支" })).not.toHaveLength(0);
+  });
+
+  it("可以从分支树节点快捷新增子分支", async () => {
+    renderPage();
+    const file = new File(["zip-bytes"], "branch.zip", { type: "application/zip" });
+
+    fireEvent.click(await screen.findByRole("button", { name: "给 prod-main-uat 新增子分支" }));
+    fireEvent.change(screen.getByLabelText("节点名"), { target: { value: "prod-main-uat-next" } });
+
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(fileInput).toBeInTheDocument();
+    fireEvent.change(fileInput!, { target: { files: [file] } });
+    fireEvent.click(screen.getByRole("button", { name: /确\s*认/ }));
+
+    await waitFor(() => expect(apiMock.createDatabaseBackupNode).toHaveBeenCalled());
+    const [payload] = apiMock.createDatabaseBackupNode.mock.calls[0];
+    expect(payload).toEqual(
+      expect.objectContaining({
+        name: "prod-main-uat-next",
+        parent_id: "branch-1",
+        source_type: "branch",
+        file,
+      }),
+    );
+  });
+
   it("默认选中节点后显示详情备注", async () => {
     renderPage();
 

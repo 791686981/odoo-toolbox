@@ -1,4 +1,4 @@
-import { DeleteOutlined, DownloadOutlined, FileZipOutlined, SaveOutlined } from "@ant-design/icons";
+import { DeleteOutlined, DownloadOutlined, FileZipOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Card, Empty, Form, Input, Spin, Tabs, Tag, Tree, Typography, message } from "antd";
 import type { DataNode } from "antd/es/tree";
@@ -54,18 +54,35 @@ function treeContainsNode(root: DatabaseBackupTreeNodeRecord, nodeId: string | n
   return Boolean(findNodeById([root], nodeId));
 }
 
-function buildTreeData(nodes: DatabaseBackupTreeNodeRecord[]): DataNode[] {
+function buildTreeData(
+  nodes: DatabaseBackupTreeNodeRecord[],
+  onCreateChild: (node: DatabaseBackupTreeNodeRecord) => void,
+): DataNode[] {
   return nodes.map((node) => ({
     key: node.id,
     title: (
       <div className="database-backup-tree-title">
-        <span className="database-backup-tree-name">{node.name}</span>
-        <span className="database-backup-tree-meta">
-          {node.is_main_root ? "主线根节点" : formatSourceType(node)}
+        <span className="database-backup-tree-title-copy">
+          <span className="database-backup-tree-name">{node.name}</span>
+          <span className="database-backup-tree-meta">
+            {node.is_main_root ? "主线根节点" : formatSourceType(node)}
+          </span>
         </span>
+        <Button
+          type="text"
+          size="small"
+          className="database-backup-tree-action"
+          icon={<PlusOutlined />}
+          aria-label={`给 ${node.name} 新增子分支`}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onCreateChild(node);
+          }}
+        />
       </div>
     ),
-    children: buildTreeData(node.children),
+    children: buildTreeData(node.children, onCreateChild),
   }));
 }
 
@@ -144,10 +161,12 @@ function DatabaseBackupDetailEditor(props: {
   canDelete: boolean;
   isSaving: boolean;
   isDeleting: boolean;
+  branchActionLabel: string;
   onSave: (values: DetailFormValues) => Promise<void>;
   onDelete: () => Promise<void>;
+  onCreateBranch: () => void;
 }) {
-  const { detail, canDelete, isSaving, isDeleting, onSave, onDelete } = props;
+  const { detail, canDelete, isSaving, isDeleting, branchActionLabel, onSave, onDelete, onCreateBranch } = props;
   const [form] = Form.useForm<DetailFormValues>();
 
   useEffect(() => {
@@ -174,6 +193,9 @@ function DatabaseBackupDetailEditor(props: {
           </div>
         </div>
         <div className="database-backup-detail-actions">
+          <Button icon={<PlusOutlined />} aria-label={branchActionLabel} onClick={onCreateBranch}>
+            {branchActionLabel}
+          </Button>
           <Button htmlType="submit" type="primary" icon={<SaveOutlined />} loading={isSaving} aria-label="保存">
             保存
           </Button>
@@ -232,10 +254,23 @@ function DatabaseBackupDetailPanel(props: {
   canDelete: boolean;
   isSaving: boolean;
   isDeleting: boolean;
+  branchActionLabel: string;
   onSave: (values: DetailFormValues) => Promise<void>;
   onDelete: () => Promise<void>;
+  onCreateBranch: () => void;
 }) {
-  const { detail, isLoading, isError, canDelete, isSaving, isDeleting, onSave, onDelete } = props;
+  const {
+    detail,
+    isLoading,
+    isError,
+    canDelete,
+    isSaving,
+    isDeleting,
+    branchActionLabel,
+    onSave,
+    onDelete,
+    onCreateBranch,
+  } = props;
 
   if (isLoading) {
     return <PanelLoading message="正在加载节点详情..." />;
@@ -263,8 +298,10 @@ function DatabaseBackupDetailPanel(props: {
       canDelete={canDelete}
       isSaving={isSaving}
       isDeleting={isDeleting}
+      branchActionLabel={branchActionLabel}
       onSave={onSave}
       onDelete={onDelete}
+      onCreateBranch={onCreateBranch}
     />
   );
 }
@@ -417,14 +454,35 @@ export function DatabaseBackupsPage() {
     () => findNodeById(treeItems, selectedNodeId),
     [selectedNodeId, treeItems],
   );
-  const branchTreeData = useMemo(() => buildTreeData(selectedRoot?.children ?? []), [selectedRoot]);
   const selectedNodeIsRoot = Boolean(selectedNodeId && selectedNodeId === selectedRootId);
   const canDeleteSelectedNode = Boolean(selectedTreeNode && selectedTreeNode.children.length === 0);
+  const branchActionLabel = selectedNodeIsRoot ? "新增一级分支" : "新增子分支";
+
+  function openCreateChild(parentId: string) {
+    setSelectedNodeId(parentId);
+    setModalState({ mode: "create-child", parentId });
+  }
+
+  const branchTreeData = useMemo(
+    () =>
+      buildTreeData(selectedRoot?.children ?? [], (node) => {
+        openCreateChild(node.id);
+      }),
+    [selectedRoot],
+  );
 
   function handleSelectRoot(root: DatabaseBackupTreeNodeRecord) {
     setSelectedRootId(root.id);
     setSelectedNodeId(root.id);
     setExpandedKeys(flattenTree(root.children).map((node) => node.id));
+  }
+
+  function handleCreateBranchFromSelectedNode() {
+    if (!selectedNodeId) {
+      return;
+    }
+
+    openCreateChild(selectedNodeId);
   }
 
   async function handleSaveDetail(values: DetailFormValues) {
@@ -487,9 +545,11 @@ export function DatabaseBackupsPage() {
           <Button onClick={() => setModalState({ mode: "create-root" })}>新建根节点</Button>
           <Button
             disabled={!detailQuery.data}
-            onClick={() => detailQuery.data && setModalState({ mode: "create-child", parentId: detailQuery.data.id })}
+            icon={<PlusOutlined />}
+            aria-label={branchActionLabel}
+            onClick={handleCreateBranchFromSelectedNode}
           >
-            新增子节点
+            {branchActionLabel}
           </Button>
           <Button
             disabled={!detailQuery.data || detailQuery.data.parent_id !== null || detailQuery.data.is_main_root}
@@ -587,8 +647,10 @@ export function DatabaseBackupsPage() {
                       canDelete={canDeleteSelectedNode}
                       isSaving={updateMutation.isPending}
                       isDeleting={deleteMutation.isPending}
+                      branchActionLabel={branchActionLabel}
                       onSave={handleSaveDetail}
                       onDelete={handleDeleteDetail}
+                      onCreateBranch={handleCreateBranchFromSelectedNode}
                     />
                   </section>
                 </div>

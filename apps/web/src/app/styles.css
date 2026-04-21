@@ -661,6 +661,15 @@ body::after {
 }
 
 .database-backup-tree-title {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.database-backup-tree-title-copy {
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -675,6 +684,19 @@ body::after {
 .database-backup-tree-meta {
   color: rgba(23, 50, 75, 0.58);
   font-size: 12px;
+}
+
+.database-backup-tree-action.ant-btn {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  opacity: 0.72;
+}
+
+.database-backup-tree-action.ant-btn:hover,
+.database-backup-tree .ant-tree-node-selected .database-backup-tree-action.ant-btn {
+  opacity: 1;
 }
 
 .database-backup-detail {

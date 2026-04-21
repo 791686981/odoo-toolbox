@@ -49,7 +49,7 @@ export function DatabaseBackupNodeForm(props: Props) {
     if (mode === "edit") {
       return "编辑节点";
     }
-    return mode === "create-root" ? "新建根节点" : "新增子节点";
+    return mode === "create-root" ? "新建根节点" : "新增分支节点";
   }, [mode]);
 
   const beforeUpload: UploadProps["beforeUpload"] = (file) => {
