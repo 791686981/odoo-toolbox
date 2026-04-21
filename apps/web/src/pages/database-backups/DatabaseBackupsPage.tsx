@@ -1,8 +1,8 @@
-import { DeleteOutlined, DownloadOutlined, FileZipOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
+import { CopyOutlined, DeleteOutlined, DownloadOutlined, FileZipOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Card, Empty, Form, Input, Spin, Tabs, Tag, Tree, Typography, message } from "antd";
 import type { DataNode } from "antd/es/tree";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { api } from "../../shared/api/client";
 import type {
@@ -132,13 +132,39 @@ function formatFileSize(size: number) {
   return `${size} B`;
 }
 
-function DetailField(props: { label: string; value: string }) {
-  const { label, value } = props;
+async function copyTextToClipboard(value: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const textArea = document.createElement("textarea");
+  textArea.value = value;
+  textArea.setAttribute("readonly", "");
+  textArea.style.position = "fixed";
+  textArea.style.opacity = "0";
+  document.body.append(textArea);
+  textArea.select();
+
+  const copied = document.execCommand("copy");
+  textArea.remove();
+
+  if (!copied) {
+    throw new Error("copy-failed");
+  }
+}
+
+function DetailField(props: { label: string; value: ReactNode; action?: ReactNode; valueClassName?: string }) {
+  const { label, value, action, valueClassName } = props;
+  const valueClassNames = ["database-backup-detail-field-value", valueClassName].filter(Boolean).join(" ");
 
   return (
     <div className="database-backup-detail-field">
-      <span>{label}</span>
-      <strong>{value}</strong>
+      <div className="database-backup-detail-field-head">
+        <span className="database-backup-detail-field-label">{label}</span>
+        {action}
+      </div>
+      <strong className={valueClassNames}>{value}</strong>
     </div>
   );
 }
@@ -175,6 +201,15 @@ function DatabaseBackupDetailEditor(props: {
       note: detail.note,
     });
   }, [detail, form]);
+
+  async function handleCopyNodeId() {
+    try {
+      await copyTextToClipboard(detail.id);
+      message.success("节点 ID 已复制");
+    } catch {
+      message.error("复制失败，请稍后重试");
+    }
+  }
 
   return (
     <Form form={form} layout="vertical" className="database-backup-detail" onFinish={onSave}>
@@ -227,6 +262,25 @@ function DatabaseBackupDetailEditor(props: {
       </div>
 
       <div className="database-backup-detail-grid">
+        <DetailField
+          label="节点 ID"
+          value={<code>{detail.id}</code>}
+          valueClassName="is-code"
+          action={
+            <Button
+              type="text"
+              size="small"
+              className="database-backup-detail-copy"
+              icon={<CopyOutlined />}
+              aria-label="复制节点 ID"
+              onClick={() => {
+                void handleCopyNodeId();
+              }}
+            >
+              复制 ID
+            </Button>
+          }
+        />
         <DetailField label="来源类型" value={formatSourceType(detail)} />
         <DetailField label="创建时间" value={formatDateTime(detail.created_at)} />
       </div>
@@ -240,7 +294,6 @@ function DatabaseBackupDetailEditor(props: {
           <span>
             {detail.zip.mime_type} · {formatFileSize(detail.zip.size)}
           </span>
-          <code>{detail.zip.sha256}</code>
         </div>
       </div>
     </Form>

@@ -80,6 +80,11 @@ describe("DatabaseBackupsPage", () => {
           getPropertyValue: () => "",
         }) as unknown as CSSStyleDeclaration,
     );
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: vi.fn().mockResolvedValue(undefined),
+      },
+    });
 
     apiMock.databaseBackupTree.mockResolvedValue({
       main_root_id: "root-1",
@@ -301,6 +306,24 @@ describe("DatabaseBackupsPage", () => {
         note: "updated",
       }),
     );
+  });
+
+  it("可以复制当前节点 ID", async () => {
+    renderPage();
+
+    await screen.findByText("生产主线数据库备份。");
+    fireEvent.click(screen.getByRole("button", { name: "复制节点 ID" }));
+
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith("root-1");
+    });
+  });
+
+  it("详情里保留节点 ID，但不再直接展示 zip 校验值", async () => {
+    renderPage();
+
+    expect(await screen.findByText("root-1")).toBeInTheDocument();
+    expect(screen.queryByText("abc123def456")).not.toBeInTheDocument();
   });
 
   it("叶子节点可以从详情面板删除", async () => {
