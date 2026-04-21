@@ -33,6 +33,7 @@ describe("buildSidebarTools", () => {
       "home",
       "csv-translation",
       "runs",
+      "database-backups",
       "files",
       "settings",
       "po-translation",
@@ -58,6 +59,7 @@ describe("buildSidebarTools", () => {
       { id: "home", section: "platform" },
       { id: "csv-translation", section: "tool" },
       { id: "runs", section: "platform" },
+      { id: "database-backups", section: "platform" },
       { id: "files", section: "platform" },
       { id: "settings", section: "platform" },
     ]);

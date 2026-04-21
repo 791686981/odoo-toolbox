@@ -26,6 +26,18 @@ const builtinTools: SidebarTool[] = [
     section: "platform",
   },
   {
+    id: "database-backups",
+    title: "数据库备份库",
+    description: "管理数据库 zip 备份版本树、主线节点与使用规范。",
+    route: "/database-backups",
+    icon: "folder",
+    category: "platform",
+    enabled: true,
+    order: 21,
+    capabilities: ["database-backups"],
+    section: "platform",
+  },
+  {
     id: "files",
     title: "文件中心",
     description: "集中管理上传文件、导出文件与后续工具产物。",
