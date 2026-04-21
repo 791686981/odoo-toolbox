@@ -22,6 +22,64 @@ export type UploadedFileRecord = {
   created_at: string;
 };
 
+export type DatabaseBackupSourceType = "root" | "branch";
+
+export type DatabaseBackupZipRecord = {
+  file_id: string;
+  filename: string;
+  size: number;
+  mime_type: string;
+  sha256: string;
+  download_url: string;
+};
+
+export type DatabaseBackupTreeNodeRecord = {
+  id: string;
+  name: string;
+  database_name: string;
+  odoo_version: string;
+  parent_id: string | null;
+  source_type: DatabaseBackupSourceType;
+  is_main_root: boolean;
+  created_at: string;
+  children: DatabaseBackupTreeNodeRecord[];
+};
+
+export type DatabaseBackupTreeRecord = {
+  main_root_id: string | null;
+  items: DatabaseBackupTreeNodeRecord[];
+};
+
+export type DatabaseBackupDetailRecord = {
+  id: string;
+  name: string;
+  database_name: string;
+  odoo_version: string;
+  parent_id: string | null;
+  source_type: DatabaseBackupSourceType;
+  is_main_root: boolean;
+  note: string;
+  created_at: string;
+  updated_at: string;
+  zip: DatabaseBackupZipRecord;
+};
+
+export type CreateDatabaseBackupNodePayload = {
+  name: string;
+  database_name?: string;
+  odoo_version?: string;
+  source_type: DatabaseBackupSourceType;
+  parent_id?: string | null;
+  is_main_root?: boolean;
+  note?: string;
+  file: File;
+};
+
+export type UpdateDatabaseBackupNodePayload = {
+  name?: string;
+  note?: string;
+};
+
 export type StoredFileRecord = UploadedFileRecord & {
   kind: string;
   run_id?: string | null;

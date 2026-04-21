@@ -1,4 +1,7 @@
 import type {
+  CreateDatabaseBackupNodePayload,
+  DatabaseBackupDetailRecord,
+  DatabaseBackupTreeRecord,
   GettextContextDraft,
   GettextProofreadPreview,
   GettextTranslationEntriesPage,
@@ -13,6 +16,7 @@ import type {
   TranslationJob,
   TranslationRow,
   TranslationRowsPage,
+  UpdateDatabaseBackupNodePayload,
   UploadedFileRecord,
   User,
 } from "./types";
@@ -86,6 +90,60 @@ export const api = {
     }
     return (await response.json()) as UploadedFileRecord;
   },
+  databaseBackupTree: () => request<DatabaseBackupTreeRecord>("/api/database-backups/tree"),
+  databaseBackupNode: (nodeId: string) =>
+    request<DatabaseBackupDetailRecord>(`/api/database-backups/nodes/${nodeId}`),
+  createDatabaseBackupNode: async (payload: CreateDatabaseBackupNodePayload) => {
+    const formData = new FormData();
+    formData.append("name", payload.name);
+    if (payload.database_name) {
+      formData.append("database_name", payload.database_name);
+    }
+    if (payload.odoo_version !== undefined) {
+      formData.append("odoo_version", payload.odoo_version);
+    }
+    formData.append("source_type", payload.source_type);
+    if (payload.parent_id) {
+      formData.append("parent_id", payload.parent_id);
+    }
+    formData.append("is_main_root", String(payload.is_main_root ?? false));
+    formData.append("note", payload.note ?? "");
+    formData.append("file", payload.file);
+
+    const response = await fetch("/api/database-backups/nodes", {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      const fallback = "请求失败";
+      try {
+        const result = await response.json();
+        throw new Error(result.detail ?? fallback);
+      } catch {
+        throw new Error(fallback);
+      }
+    }
+
+    return (await response.json()) as DatabaseBackupDetailRecord;
+  },
+  updateDatabaseBackupNode: (nodeId: string, payload: UpdateDatabaseBackupNodePayload) =>
+    request<DatabaseBackupDetailRecord>(`/api/database-backups/nodes/${nodeId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteDatabaseBackupNode: (nodeId: string) =>
+    request<void>(`/api/database-backups/nodes/${nodeId}`, {
+      method: "DELETE",
+      skipJson: true,
+    }),
+  markDatabaseBackupMainRoot: (nodeId: string) =>
+    request<DatabaseBackupDetailRecord>(`/api/database-backups/nodes/${nodeId}/mark-main-root`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  databaseBackupZipUrl: (nodeId: string) => `/api/database-backups/nodes/${nodeId}/zip`,
   createContextDraft: (payload: {
     uploaded_file_id: string;
     source_language: string;

@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { LoginPage } from "../features/auth/LoginPage";
 import { SettingsPage } from "../features/settings/SettingsPage";
 import { ShellLayout } from "../layouts/ShellLayout";
+import { DatabaseBackupsPage } from "../pages/database-backups/DatabaseBackupsPage";
 import { FilesPage } from "../pages/files/FilesPage";
 import { HomePage } from "../pages/home/HomePage";
 import { RunsPage } from "../pages/runs/RunsPage";
@@ -19,6 +20,7 @@ export function AppRoutes() {
         ))}
         <Route path="/runs" element={<RunsPage />} />
         <Route path="/jobs" element={<Navigate to="/runs" replace />} />
+        <Route path="/database-backups" element={<DatabaseBackupsPage />} />
         <Route path="/files" element={<FilesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>

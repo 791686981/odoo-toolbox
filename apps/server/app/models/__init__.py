@@ -1,4 +1,5 @@
 from app.models.entities import (
+    DatabaseBackupNode,
     SystemSetting,
     TranslationJob,
     TranslationJobChunk,
@@ -14,6 +15,7 @@ from app.models.tools import (
 )
 
 __all__ = [
+    "DatabaseBackupNode",
     "GettextTranslationChunk",
     "GettextTranslationEntry",
     "GettextTranslationRun",

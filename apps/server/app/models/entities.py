@@ -38,6 +38,23 @@ class UploadedFile(Base):
     created_at = Column(DateTime, default=utcnow, nullable=False)
 
 
+class DatabaseBackupNode(Base):
+    __tablename__ = "database_backup_nodes"
+
+    id = Column(String(36), primary_key=True, default=new_id)
+    name = Column(String(255), nullable=False)
+    database_name = Column(String(255), nullable=False)
+    odoo_version = Column(String(50), nullable=False)
+    parent_id = Column(String(36), ForeignKey("database_backup_nodes.id"), nullable=True)
+    source_type = Column(String(50), nullable=False)
+    zip_file_id = Column(String(36), ForeignKey("uploaded_files.id"), nullable=False)
+    is_main_root = Column(Boolean, nullable=False, default=False)
+    created_by = Column(String(100), nullable=False)
+    note = Column(Text, nullable=False, default="")
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+
 class TranslationJob(Base):
     __tablename__ = "translation_jobs"
 

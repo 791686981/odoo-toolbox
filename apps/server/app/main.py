@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from app.api.platform.runs import router as platform_runs_router
 from app.api.auth import router as auth_router
+from app.api.database_backups import router as database_backups_router
 from app.api.files import router as files_router
 from app.api.jobs import router as jobs_router
 from app.api.settings import router as settings_router
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(auth_router, prefix="/api")
+    app.include_router(database_backups_router, prefix="/api")
     app.include_router(files_router, prefix="/api")
     app.include_router(jobs_router, prefix="/api")
     app.include_router(platform_runs_router, prefix="/api")
