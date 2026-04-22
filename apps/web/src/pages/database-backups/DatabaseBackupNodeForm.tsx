@@ -111,7 +111,9 @@ export function DatabaseBackupNodeForm(props: Props) {
               ref={fileInputRef}
               type="file"
               accept=".zip"
-              hidden
+              aria-hidden="true"
+              tabIndex={-1}
+              style={{ display: "none" }}
               onChange={handleFileChange}
             />
             <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>

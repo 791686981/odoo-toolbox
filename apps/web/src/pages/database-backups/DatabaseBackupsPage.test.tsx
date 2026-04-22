@@ -298,6 +298,11 @@ describe("DatabaseBackupsPage", () => {
     renderPage();
 
     fireEvent.click(await screen.findByRole("button", { name: "新建根节点" }));
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]');
+
+    expect(fileInput).toBeInTheDocument();
+    expect(fileInput?.getAttribute("style")).toContain("display: none");
+
     fireEvent.click(screen.getByRole("button", { name: "选择 zip 文件" }));
 
     expect(inputClickSpy).toHaveBeenCalled();
