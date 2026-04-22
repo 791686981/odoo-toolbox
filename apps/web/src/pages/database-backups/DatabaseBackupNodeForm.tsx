@@ -1,6 +1,5 @@
-import { Button, Form, Input, Modal, Upload } from "antd";
-import type { UploadFile, UploadProps } from "antd";
-import { useEffect, useMemo, useState } from "react";
+import { Button, Form, Input, Modal, Typography } from "antd";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 
 export type DatabaseBackupNodeFormMode = "create-root" | "create-child" | "edit";
 
@@ -22,15 +21,14 @@ type Props = {
 export function DatabaseBackupNodeForm(props: Props) {
   const { mode, open, initialValues, submitting, onCancel, onSubmit } = props;
   const [form] = Form.useForm<Omit<DatabaseBackupNodeFormValues, "file">>();
-  const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | undefined>();
   const [fileError, setFileError] = useState<string | undefined>();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isEdit = mode === "edit";
 
   useEffect(() => {
     if (!open) {
       form.resetFields();
-      setFileList([]);
       setSelectedFile(undefined);
       setFileError(undefined);
       return;
@@ -40,7 +38,6 @@ export function DatabaseBackupNodeForm(props: Props) {
       name: initialValues?.name ?? "",
       note: initialValues?.note ?? "",
     });
-    setFileList([]);
     setSelectedFile(undefined);
     setFileError(undefined);
   }, [form, initialValues, open]);
@@ -52,17 +49,25 @@ export function DatabaseBackupNodeForm(props: Props) {
     return mode === "create-root" ? "新建根节点" : "新增分支节点";
   }, [mode]);
 
-  const beforeUpload: UploadProps["beforeUpload"] = (file) => {
-    setFileList([file]);
-    setSelectedFile(file as File);
+  function handleOpenFilePicker() {
+    fileInputRef.current?.click();
+  }
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    setSelectedFile(file);
     setFileError(undefined);
-    return false;
-  };
+  }
 
   const handleRemove = () => {
-    setFileList([]);
     setSelectedFile(undefined);
-    return true;
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   async function handleOk() {
@@ -102,9 +107,26 @@ export function DatabaseBackupNodeForm(props: Props) {
             validateStatus={fileError ? "error" : undefined}
             help={fileError}
           >
-            <Upload beforeUpload={beforeUpload} onRemove={handleRemove} fileList={fileList} maxCount={1} accept=".zip">
-              <Button>选择 zip 文件</Button>
-            </Upload>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".zip"
+              hidden
+              onChange={handleFileChange}
+            />
+            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              <Button onClick={handleOpenFilePicker}>选择 zip 文件</Button>
+              {selectedFile ? (
+                <>
+                  <Typography.Text>{selectedFile.name}</Typography.Text>
+                  <Button type="link" onClick={handleRemove}>
+                    移除
+                  </Button>
+                </>
+              ) : (
+                <Typography.Text type="secondary">请选择一个数据库 zip 备份文件</Typography.Text>
+              )}
+            </div>
           </Form.Item>
         ) : null}
       </Form>

@@ -292,6 +292,17 @@ describe("DatabaseBackupsPage", () => {
     expect(payload).not.toHaveProperty("odoo_version");
   });
 
+  it("点击选择 zip 文件按钮时会触发文件选择框", async () => {
+    const inputClickSpy = vi.spyOn(HTMLInputElement.prototype, "click");
+
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "新建根节点" }));
+    fireEvent.click(screen.getByRole("button", { name: "选择 zip 文件" }));
+
+    expect(inputClickSpy).toHaveBeenCalled();
+  });
+
   it("编辑节点时只提交可编辑字段", async () => {
     renderPage();
 
