@@ -5,7 +5,18 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app/apps/server
 
-RUN apt-get update \
+RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+      sed -i \
+        -e 's|http://deb.debian.org/debian|https://mirrors.ustc.edu.cn/debian|g' \
+        -e 's|http://deb.debian.org/debian-security|https://mirrors.ustc.edu.cn/debian-security|g' \
+        /etc/apt/sources.list.d/debian.sources; \
+    elif [ -f /etc/apt/sources.list ]; then \
+      sed -i \
+        -e 's|http://deb.debian.org/debian|https://mirrors.ustc.edu.cn/debian|g' \
+        -e 's|http://deb.debian.org/debian-security|https://mirrors.ustc.edu.cn/debian-security|g' \
+        /etc/apt/sources.list; \
+    fi \
+  && apt-get update \
   && apt-get install -y --no-install-recommends build-essential curl \
   && rm -rf /var/lib/apt/lists/*
 
