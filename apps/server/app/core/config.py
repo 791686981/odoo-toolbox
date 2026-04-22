@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     context_sample_size: int = 8
 
     mcp_api_key: str = ""
+    download_api_key: str = ""
 
     model_config = SettingsConfigDict(
         env_prefix="TOOLBOX_",

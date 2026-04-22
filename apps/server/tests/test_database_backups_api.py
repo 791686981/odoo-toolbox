@@ -388,3 +388,57 @@ def test_database_backups_detail_patch_mark_main_root_and_zip_download(tmp_path)
         assert head_response.headers["etag"] == f'"{detail_response.json()["zip"]["sha256"]}"'
         assert head_response.headers["last-modified"]
         assert head_response.headers["content-length"] == str(len(zip_response.content))
+
+
+def test_database_backup_zip_download_supports_bearer_token(tmp_path) -> None:
+    from app.core.config import settings
+    from app.db.session import configure_database
+    from app.main import create_app
+
+    settings.database_url = f"sqlite:///{tmp_path / 'app.db'}"
+    settings.upload_dir = tmp_path / "uploads"
+    settings.output_dir = tmp_path / "outputs"
+    settings.eager_tasks = True
+    settings.admin_username = "admin"
+    settings.admin_password = "admin123456"
+    settings.download_api_key = "download-test-key"
+    configure_database()
+
+    app = create_app()
+    with TestClient(app) as client:
+        login_response = client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "admin123456"},
+        )
+        assert login_response.status_code == 200
+
+        root_response = client.post(
+            "/api/database-backups/nodes",
+            data={
+                "name": "prod-main-token",
+                "source_type": "root",
+                "is_main_root": "true",
+                "note": "token download",
+            },
+            files={"file": ("prod-main-token.zip", _zip_bytes("token.txt", b"token-bytes"), "application/zip")},
+        )
+        assert root_response.status_code == 200
+        root_payload = root_response.json()
+
+        client.cookies.clear()
+
+        zip_response = client.get(
+            f"/api/database-backups/nodes/{root_payload['id']}/zip",
+            headers={"Authorization": "Bearer download-test-key"},
+        )
+        assert zip_response.status_code == 200
+        assert zip_response.headers["content-type"] == "application/zip"
+        with zipfile.ZipFile(io.BytesIO(zip_response.content)) as archive:
+            assert archive.read("token.txt") == b"token-bytes"
+
+        head_response = client.head(
+            f"/api/database-backups/nodes/{root_payload['id']}/zip",
+            headers={"Authorization": "Bearer download-test-key"},
+        )
+        assert head_response.status_code == 200
+        assert head_response.headers["content-type"] == "application/zip"

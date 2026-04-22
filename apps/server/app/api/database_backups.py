@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, verify_database_backup_download_access
 from app.db.session import get_db
 from app.models import DatabaseBackupNode, User
 from app.schemas.database_backups import (
@@ -127,7 +127,7 @@ def mark_database_backup_node_main_root(
 @router.get("/database-backups/nodes/{node_id}/zip")
 def download_database_backup_node_zip(
     node_id: str,
-    user: User = Depends(get_current_user),
+    _auth_context: User | None = Depends(verify_database_backup_download_access),
     db: Session = Depends(get_db),
 ) -> FileResponse:
     node, file_record = load_database_backup_detail(db, node_id)
@@ -140,7 +140,7 @@ def download_database_backup_node_zip(
 @router.head("/database-backups/nodes/{node_id}/zip")
 def head_database_backup_node_zip(
     node_id: str,
-    user: User = Depends(get_current_user),
+    _auth_context: User | None = Depends(verify_database_backup_download_access),
     db: Session = Depends(get_db),
 ) -> Response:
     _, file_record = load_database_backup_detail(db, node_id)

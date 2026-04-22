@@ -62,6 +62,14 @@ docker compose up --build
 - 用户名：`TOOLBOX_ADMIN_USERNAME`
 - 密码：`TOOLBOX_ADMIN_PASSWORD`
 
+数据库备份 zip 下载接口如需脚本直连，可额外配置：
+
+- `TOOLBOX_DOWNLOAD_API_KEY`
+
+## 接口说明
+
+- [数据库备份节点 Zip 下载接口](docs/database-backup-download-api.md)
+
 ## Makefile 快捷命令
 
 推荐直接在项目根目录使用：
