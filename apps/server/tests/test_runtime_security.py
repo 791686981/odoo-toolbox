@@ -50,3 +50,23 @@ def test_app_survives_mcp_mount_recursion_error(tmp_path, monkeypatch, caplog) -
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
     assert "MCP" in caplog.text
+
+
+def test_app_mounts_mcp_when_recursive_non_mcp_schema_exists(tmp_path) -> None:
+    from app.core.config import settings
+    from app.db.session import configure_database
+    from app.main import create_app
+
+    settings.database_url = f"sqlite:///{tmp_path / 'app.db'}"
+    settings.upload_dir = tmp_path / "uploads"
+    settings.output_dir = tmp_path / "outputs"
+    settings.eager_tasks = True
+    settings.admin_username = "admin"
+    settings.admin_password = "admin123456"
+    settings.mcp_api_key = "mcp-test-key"
+    configure_database()
+
+    app = create_app()
+
+    assert app.state.mcp_enabled is True
+    assert any(getattr(route, "path", "") == "/mcp" for route in app.routes)
