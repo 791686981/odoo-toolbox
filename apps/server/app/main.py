@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -19,6 +20,8 @@ from app.db.base import Base
 from app.db import session as db_session
 from app.db.session import session_scope
 from app.models import SystemSetting, User
+
+logger = logging.getLogger(__name__)
 
 
 def validate_runtime_settings() -> None:
@@ -85,8 +88,14 @@ def create_app() -> FastAPI:
     app.include_router(settings_router, prefix="/api")
     app.include_router(tools_router, prefix="/api")
 
+    app.state.mcp_enabled = False
     if settings.mcp_api_key:
-        _mount_mcp(app)
+        try:
+            _mount_mcp(app)
+        except Exception:
+            logger.exception("MCP HTTP 挂载失败，已跳过 MCP 暴露。")
+        else:
+            app.state.mcp_enabled = True
 
     return app
 
