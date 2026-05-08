@@ -67,3 +67,25 @@ def verify_database_backup_download_access(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="下载 API Key 无效。")
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
+
+
+def verify_database_backup_write_access(
+    toolbox_session: Optional[str] = Cookie(default=None),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+    db: Session = Depends(get_db),
+) -> User | None:
+    user, detail = _read_user_from_session(toolbox_session, db)
+    if user is not None:
+        return user
+
+    if (
+        settings.database_backup_write_api_key
+        and credentials
+        and credentials.credentials == settings.database_backup_write_api_key
+    ):
+        return None
+
+    if credentials is not None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="数据库备份写入 API Key 无效。")
+
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)

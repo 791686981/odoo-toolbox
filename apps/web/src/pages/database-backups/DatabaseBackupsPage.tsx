@@ -1,4 +1,12 @@
-import { CopyOutlined, DeleteOutlined, DownloadOutlined, FileZipOutlined, PlusOutlined, SaveOutlined } from "@ant-design/icons";
+import {
+  CopyOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
+  FileZipOutlined,
+  FolderOpenOutlined,
+  PlusOutlined,
+  SaveOutlined,
+} from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Card, Empty, Form, Input, Spin, Tabs, Tag, Tree, Typography, message } from "antd";
 import type { DataNode } from "antd/es/tree";
@@ -65,7 +73,8 @@ function buildTreeData(
         <span className="database-backup-tree-title-copy">
           <span className="database-backup-tree-name">{node.name}</span>
           <span className="database-backup-tree-meta">
-            {node.is_main_root ? "主线根节点" : formatSourceType(node)}
+            {node.is_main_root ? "主线根节点" : formatNodeKind(node)}
+            {node.domain ? ` · ${node.domain}` : ""}
           </span>
         </span>
         <Button
@@ -117,6 +126,20 @@ function formatDateTime(value: string) {
 
 function formatSourceType(detail: Pick<DatabaseBackupDetailRecord, "source_type">) {
   return detail.source_type === "root" ? "主线基点" : "升级分支";
+}
+
+function formatNodeKind(detail: Pick<DatabaseBackupDetailRecord, "node_kind">) {
+  return detail.node_kind === "folder" ? "目录" : "快照";
+}
+
+function formatSnapshotType(value: DatabaseBackupDetailRecord["snapshot_type"]) {
+  const labels: Record<string, string> = {
+    baseline: "基线快照",
+    issue_reproduction: "复现现场",
+    regression: "回归复测",
+    ad_hoc: "临时快照",
+  };
+  return value ? labels[value] ?? value : "未设置";
 }
 
 function formatFileSize(size: number) {
@@ -188,11 +211,24 @@ function DatabaseBackupDetailEditor(props: {
   isSaving: boolean;
   isDeleting: boolean;
   branchActionLabel: string;
+  isCopyingRestoreEnv: boolean;
   onSave: (values: DetailFormValues) => Promise<void>;
   onDelete: () => Promise<void>;
   onCreateBranch: () => void;
+  onCopyRestoreEnv: () => Promise<void>;
 }) {
-  const { detail, canDelete, isSaving, isDeleting, branchActionLabel, onSave, onDelete, onCreateBranch } = props;
+  const {
+    detail,
+    canDelete,
+    isSaving,
+    isDeleting,
+    branchActionLabel,
+    isCopyingRestoreEnv,
+    onSave,
+    onDelete,
+    onCreateBranch,
+    onCopyRestoreEnv,
+  } = props;
   const [form] = Form.useForm<DetailFormValues>();
 
   useEffect(() => {
@@ -219,12 +255,15 @@ function DatabaseBackupDetailEditor(props: {
             {detail.name}
           </Typography.Title>
           <div className="database-backup-detail-tags">
+            <Tag color={detail.node_kind === "folder" ? "cyan" : "purple"}>
+              {formatNodeKind(detail)}
+            </Tag>
             <Tag color={detail.is_main_root ? "gold" : "default"}>
               {detail.is_main_root ? "主线" : "分支"}
             </Tag>
-            <Tag color={detail.source_type === "root" ? "blue" : "geekblue"}>
-              {formatSourceType(detail)}
-            </Tag>
+            {detail.node_kind === "snapshot" ? (
+              <Tag color="geekblue">{formatSnapshotType(detail.snapshot_type)}</Tag>
+            ) : null}
           </div>
         </div>
         <div className="database-backup-detail-actions">
@@ -234,9 +273,16 @@ function DatabaseBackupDetailEditor(props: {
           <Button htmlType="submit" type="primary" icon={<SaveOutlined />} loading={isSaving} aria-label="保存">
             保存
           </Button>
-          <Button icon={<DownloadOutlined />} href={api.databaseBackupZipUrl(detail.id)}>
-            下载 Zip
-          </Button>
+          {detail.zip ? (
+            <>
+              <Button icon={<DownloadOutlined />} href={api.databaseBackupZipUrl(detail.id)}>
+                下载 Zip
+              </Button>
+              <Button loading={isCopyingRestoreEnv} onClick={() => void onCopyRestoreEnv()}>
+                复制恢复配置
+              </Button>
+            </>
+          ) : null}
           <Button
             danger
             icon={<DeleteOutlined />}
@@ -281,19 +327,43 @@ function DatabaseBackupDetailEditor(props: {
             </Button>
           }
         />
+        <DetailField label="节点类型" value={formatNodeKind(detail)} />
         <DetailField label="来源类型" value={formatSourceType(detail)} />
         <DetailField label="创建时间" value={formatDateTime(detail.created_at)} />
+        {detail.domain ? <DetailField label="业务域" value={detail.domain} /> : null}
+        {detail.requirement_title ? <DetailField label="需求" value={detail.requirement_title} /> : null}
+        {detail.notion_url ? (
+          <DetailField
+            label="Notion"
+            value={
+              <a href={detail.notion_url} target="_blank" rel="noreferrer">
+                {detail.notion_url}
+              </a>
+            }
+            valueClassName="is-code"
+          />
+        ) : null}
       </div>
 
       <div className="database-backup-detail-zip">
         <div className="database-backup-detail-zip-icon">
-          <FileZipOutlined />
+          {detail.zip ? <FileZipOutlined /> : <FolderOpenOutlined />}
         </div>
         <div className="database-backup-detail-zip-body">
-          <strong>{detail.zip.filename}</strong>
-          <span>
-            {detail.zip.mime_type} · {formatFileSize(detail.zip.size)}
-          </span>
+          {detail.zip ? (
+            <>
+              <strong>{detail.zip.filename}</strong>
+              <span>
+                {detail.zip.mime_type} · {formatFileSize(detail.zip.size)}
+              </span>
+              <code>{detail.zip.sha256}</code>
+            </>
+          ) : (
+            <>
+              <strong>目录节点</strong>
+              <span>目录用于组织 UAT 业务域和需求，不绑定 zip 文件。</span>
+            </>
+          )}
         </div>
       </div>
     </Form>
@@ -308,9 +378,11 @@ function DatabaseBackupDetailPanel(props: {
   isSaving: boolean;
   isDeleting: boolean;
   branchActionLabel: string;
+  isCopyingRestoreEnv: boolean;
   onSave: (values: DetailFormValues) => Promise<void>;
   onDelete: () => Promise<void>;
   onCreateBranch: () => void;
+  onCopyRestoreEnv: () => Promise<void>;
 }) {
   const {
     detail,
@@ -320,9 +392,11 @@ function DatabaseBackupDetailPanel(props: {
     isSaving,
     isDeleting,
     branchActionLabel,
+    isCopyingRestoreEnv,
     onSave,
     onDelete,
     onCreateBranch,
+    onCopyRestoreEnv,
   } = props;
 
   if (isLoading) {
@@ -352,9 +426,11 @@ function DatabaseBackupDetailPanel(props: {
       isSaving={isSaving}
       isDeleting={isDeleting}
       branchActionLabel={branchActionLabel}
+      isCopyingRestoreEnv={isCopyingRestoreEnv}
       onSave={onSave}
       onDelete={onDelete}
       onCreateBranch={onCreateBranch}
+      onCopyRestoreEnv={onCopyRestoreEnv}
     />
   );
 }
@@ -503,6 +579,10 @@ export function DatabaseBackupsPage() {
     },
   });
 
+  const restoreEnvMutation = useMutation({
+    mutationFn: (nodeId: string) => api.databaseBackupRestoreEnv(nodeId),
+  });
+
   const selectedTreeNode = useMemo(
     () => findNodeById(treeItems, selectedNodeId),
     [selectedNodeId, treeItems],
@@ -565,6 +645,20 @@ export function DatabaseBackupsPage() {
     }
   }
 
+  async function handleCopyRestoreEnv() {
+    if (!detailQuery.data || detailQuery.data.node_kind !== "snapshot") {
+      return;
+    }
+
+    try {
+      const payload = await restoreEnvMutation.mutateAsync(detailQuery.data.id);
+      await copyTextToClipboard(payload.restore_env);
+      message.success("恢复配置已复制");
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "恢复配置复制失败");
+    }
+  }
+
   async function handleSubmit(values: DatabaseBackupNodeFormValues) {
     if (!modalState) {
       return;
@@ -605,7 +699,12 @@ export function DatabaseBackupsPage() {
             {branchActionLabel}
           </Button>
           <Button
-            disabled={!detailQuery.data || detailQuery.data.parent_id !== null || detailQuery.data.is_main_root}
+            disabled={
+              !detailQuery.data ||
+              detailQuery.data.node_kind !== "snapshot" ||
+              detailQuery.data.parent_id !== null ||
+              detailQuery.data.is_main_root
+            }
             loading={markMainRootMutation.isPending}
             onClick={() => detailQuery.data && markMainRootMutation.mutate(detailQuery.data.id)}
           >
@@ -640,6 +739,9 @@ export function DatabaseBackupsPage() {
                             onClick={() => handleSelectRoot(root)}
                           >
                             <span>{root.name}</span>
+                            <Tag color={root.node_kind === "folder" ? "cyan" : "purple"}>
+                              {formatNodeKind(root)}
+                            </Tag>
                             {root.is_main_root ? <Tag color="gold">主线</Tag> : null}
                           </button>
                         ))}
@@ -701,9 +803,11 @@ export function DatabaseBackupsPage() {
                       isSaving={updateMutation.isPending}
                       isDeleting={deleteMutation.isPending}
                       branchActionLabel={branchActionLabel}
+                      isCopyingRestoreEnv={restoreEnvMutation.isPending}
                       onSave={handleSaveDetail}
                       onDelete={handleDeleteDetail}
                       onCreateBranch={handleCreateBranchFromSelectedNode}
+                      onCopyRestoreEnv={handleCopyRestoreEnv}
                     />
                   </section>
                 </div>
@@ -711,7 +815,7 @@ export function DatabaseBackupsPage() {
             },
             {
               key: "spec",
-              label: "命名与升级规范",
+              label: "UAT 快照规范",
               children: <DatabaseBackupSpecPanel />,
             },
           ]}

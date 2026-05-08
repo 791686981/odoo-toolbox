@@ -66,9 +66,14 @@ docker compose up --build
 
 - `TOOLBOX_DOWNLOAD_API_KEY`
 
+数据库备份目录、UAT 树和快照上传如需脚本写入，可额外配置：
+
+- `TOOLBOX_DATABASE_BACKUP_WRITE_API_KEY`
+
 ## 接口说明
 
 - [数据库备份节点 Zip 下载接口](docs/database-backup-download-api.md)
+- [UAT 数据库快照流程](docs/uat-database-backup-snapshot-flow.md)
 
 ## Makefile 快捷命令
 
