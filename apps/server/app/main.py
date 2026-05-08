@@ -18,6 +18,7 @@ from app.core.config import settings
 from app.core.security import hash_password, verify_password
 from app.db.base import Base
 from app.db import session as db_session
+from app.db.migrations import migrate_database_backup_nodes_schema
 from app.db.session import session_scope
 from app.models import SystemSetting, User
 
@@ -62,6 +63,7 @@ def ensure_default_data() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=db_session.engine)
+    migrate_database_backup_nodes_schema(db_session.engine)
     ensure_default_data()
     yield
 
@@ -105,6 +107,7 @@ def _mount_mcp(app: FastAPI) -> None:
     from fastapi_mcp import AuthConfig, FastApiMCP
 
     from app.api.deps import verify_mcp_token
+    from app.tools.database_backups.router import router as database_backups_mcp_router
     from app.tools.gettext_translation.router import router as gettext_translation_router
 
     # fastapi-mcp resolves the whole OpenAPI schema before filtering tags.
@@ -112,10 +115,11 @@ def _mount_mcp(app: FastAPI) -> None:
     # recursive schemas do not break MCP startup.
     mcp_source_app = FastAPI(title=settings.app_name, debug=settings.debug)
     mcp_source_app.include_router(gettext_translation_router, prefix="/api")
+    mcp_source_app.include_router(database_backups_mcp_router, prefix="/api")
     mcp = FastApiMCP(
         mcp_source_app,
-        name="Odoo Gettext Translator",
-        description="Odoo Gettext .po/.pot 文件自动翻译工具",
+        name="Odoo Toolbox",
+        description="Odoo Toolbox MCP 工具，包括 Gettext 翻译和 UAT 数据库备份树管理。",
         include_tags=["mcp"],
         auth_config=AuthConfig(
             dependencies=[Depends(verify_mcp_token)],

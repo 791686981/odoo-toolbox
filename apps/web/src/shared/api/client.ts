@@ -1,6 +1,7 @@
 import type {
   CreateDatabaseBackupNodePayload,
   DatabaseBackupDetailRecord,
+  DatabaseBackupRestoreEnvRecord,
   DatabaseBackupTreeRecord,
   GettextContextDraft,
   GettextProofreadPreview,
@@ -140,6 +141,11 @@ export const api = {
     }),
   markDatabaseBackupMainRoot: (nodeId: string) =>
     request<DatabaseBackupDetailRecord>(`/api/database-backups/nodes/${nodeId}/mark-main-root`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  databaseBackupRestoreEnv: (nodeId: string) =>
+    request<DatabaseBackupRestoreEnvRecord>(`/api/database-backups/nodes/${nodeId}/restore-env`, {
       method: "POST",
       body: JSON.stringify({}),
     }),

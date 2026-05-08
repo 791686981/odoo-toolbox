@@ -36,6 +36,7 @@ class Settings(BaseSettings):
 
     mcp_api_key: str = ""
     download_api_key: str = ""
+    database_backup_write_api_key: str = ""
 
     model_config = SettingsConfigDict(
         env_prefix="TOOLBOX_",

@@ -23,6 +23,8 @@ export type UploadedFileRecord = {
 };
 
 export type DatabaseBackupSourceType = "root" | "branch";
+export type DatabaseBackupNodeKind = "folder" | "snapshot";
+export type DatabaseBackupSnapshotType = "baseline" | "issue_reproduction" | "regression" | "ad_hoc";
 
 export type DatabaseBackupZipRecord = {
   file_id: string;
@@ -40,8 +42,14 @@ export type DatabaseBackupTreeNodeRecord = {
   odoo_version: string;
   parent_id: string | null;
   source_type: DatabaseBackupSourceType;
+  node_kind: DatabaseBackupNodeKind;
+  snapshot_type: DatabaseBackupSnapshotType | null;
+  domain: string | null;
+  requirement_title: string | null;
+  notion_url: string | null;
   is_main_root: boolean;
   created_at: string;
+  zip: DatabaseBackupZipRecord | null;
   children: DatabaseBackupTreeNodeRecord[];
 };
 
@@ -57,11 +65,20 @@ export type DatabaseBackupDetailRecord = {
   odoo_version: string;
   parent_id: string | null;
   source_type: DatabaseBackupSourceType;
+  node_kind: DatabaseBackupNodeKind;
+  snapshot_type: DatabaseBackupSnapshotType | null;
+  domain: string | null;
+  requirement_title: string | null;
+  notion_url: string | null;
+  base_node_id: string | null;
+  git_branch: string | null;
+  git_commit: string | null;
+  metadata: Record<string, unknown>;
   is_main_root: boolean;
   note: string;
   created_at: string;
   updated_at: string;
-  zip: DatabaseBackupZipRecord;
+  zip: DatabaseBackupZipRecord | null;
 };
 
 export type CreateDatabaseBackupNodePayload = {
@@ -78,6 +95,19 @@ export type CreateDatabaseBackupNodePayload = {
 export type UpdateDatabaseBackupNodePayload = {
   name?: string;
   note?: string;
+  notion_url?: string | null;
+  base_node_id?: string | null;
+  git_branch?: string | null;
+  git_commit?: string | null;
+  database_name?: string;
+  odoo_version?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type DatabaseBackupRestoreEnvRecord = {
+  node_id: string;
+  restore_env: string;
+  values: Record<string, string>;
 };
 
 export type StoredFileRecord = UploadedFileRecord & {

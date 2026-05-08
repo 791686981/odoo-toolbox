@@ -12,6 +12,7 @@ const apiMock = vi.hoisted(() => ({
   updateDatabaseBackupNode: vi.fn(),
   deleteDatabaseBackupNode: vi.fn(),
   markDatabaseBackupMainRoot: vi.fn(),
+  databaseBackupRestoreEnv: vi.fn(),
   databaseBackupZipUrl: vi.fn(),
 }));
 
@@ -23,6 +24,7 @@ vi.mock("../../shared/api/client", () => ({
     updateDatabaseBackupNode: apiMock.updateDatabaseBackupNode,
     deleteDatabaseBackupNode: apiMock.deleteDatabaseBackupNode,
     markDatabaseBackupMainRoot: apiMock.markDatabaseBackupMainRoot,
+    databaseBackupRestoreEnv: apiMock.databaseBackupRestoreEnv,
     databaseBackupZipUrl: apiMock.databaseBackupZipUrl,
   },
 }));
@@ -37,6 +39,15 @@ function buildDetail(overrides: Record<string, unknown> = {}) {
     odoo_version: "18.0",
     parent_id: null,
     source_type: "root",
+    node_kind: "snapshot",
+    snapshot_type: "ad_hoc",
+    domain: null,
+    requirement_title: null,
+    notion_url: null,
+    base_node_id: null,
+    git_branch: null,
+    git_commit: null,
+    metadata: {},
     is_main_root: true,
     note: "生产主线数据库备份。",
     created_at: "2026-04-21T09:30:00Z",
@@ -96,8 +107,21 @@ describe("DatabaseBackupsPage", () => {
           odoo_version: "18.0",
           parent_id: null,
           source_type: "root",
+          node_kind: "snapshot",
+          snapshot_type: "ad_hoc",
+          domain: null,
+          requirement_title: null,
+          notion_url: null,
           is_main_root: true,
           created_at: "2026-04-21T09:30:00Z",
+          zip: {
+            file_id: "file-1",
+            filename: "prod-main-20260421.zip",
+            size: 2048,
+            mime_type: "application/zip",
+            sha256: "abc123def456",
+            download_url: "/api/database-backups/nodes/root-1/zip",
+          },
           children: [
             {
               id: "branch-1",
@@ -106,8 +130,21 @@ describe("DatabaseBackupsPage", () => {
               odoo_version: "18.0",
               parent_id: "root-1",
               source_type: "branch",
+              node_kind: "snapshot",
+              snapshot_type: "ad_hoc",
+              domain: null,
+              requirement_title: null,
+              notion_url: null,
               is_main_root: false,
               created_at: "2026-04-21T10:00:00Z",
+              zip: {
+                file_id: "file-2",
+                filename: "prod-main-uat.zip",
+                size: 2048,
+                mime_type: "application/zip",
+                sha256: "branch-sha",
+                download_url: "/api/database-backups/nodes/branch-1/zip",
+              },
               children: [
                 {
                   id: "leaf-1",
@@ -116,8 +153,21 @@ describe("DatabaseBackupsPage", () => {
                   odoo_version: "18.0",
                   parent_id: "branch-1",
                   source_type: "branch",
+                  node_kind: "snapshot",
+                  snapshot_type: "ad_hoc",
+                  domain: null,
+                  requirement_title: null,
+                  notion_url: null,
                   is_main_root: false,
                   created_at: "2026-04-21T11:00:00Z",
+                  zip: {
+                    file_id: "file-3",
+                    filename: "prod-main-uat-check.zip",
+                    size: 2048,
+                    mime_type: "application/zip",
+                    sha256: "leaf-sha",
+                    download_url: "/api/database-backups/nodes/leaf-1/zip",
+                  },
                   children: [],
                 },
               ],
@@ -163,6 +213,15 @@ describe("DatabaseBackupsPage", () => {
     );
     apiMock.deleteDatabaseBackupNode.mockResolvedValue(undefined);
     apiMock.markDatabaseBackupMainRoot.mockResolvedValue(buildDetail({ is_main_root: true }));
+    apiMock.databaseBackupRestoreEnv.mockResolvedValue({
+      node_id: "root-1",
+      restore_env: "ODOO_RESTORE_NODE_ID=root-1\nODOO_RESTORE_IF_EXISTS=overwrite\nODOO_RESTORE_NEUTRALIZE=false",
+      values: {
+        ODOO_RESTORE_NODE_ID: "root-1",
+        ODOO_RESTORE_IF_EXISTS: "overwrite",
+        ODOO_RESTORE_NEUTRALIZE: "false",
+      },
+    });
     apiMock.databaseBackupZipUrl.mockReturnValue("/api/database-backups/nodes/root-1/zip");
   });
 
@@ -186,6 +245,51 @@ describe("DatabaseBackupsPage", () => {
     expect(branchTreePanel).toBeInTheDocument();
     expect(within(branchTreePanel as HTMLElement).queryByText("prod-main")).not.toBeInTheDocument();
     expect(within(branchTreePanel as HTMLElement).getByText("prod-main-uat")).toBeInTheDocument();
+  });
+
+  it("目录节点不显示下载和恢复配置操作", async () => {
+    apiMock.databaseBackupTree.mockResolvedValueOnce({
+      main_root_id: null,
+      items: [
+        {
+          id: "uat-root",
+          name: "UAT",
+          database_name: "",
+          odoo_version: "",
+          parent_id: null,
+          source_type: "root",
+          node_kind: "folder",
+          snapshot_type: null,
+          domain: null,
+          requirement_title: null,
+          notion_url: null,
+          is_main_root: false,
+          created_at: "2026-05-08T09:30:00Z",
+          zip: null,
+          children: [],
+        },
+      ],
+    });
+    apiMock.databaseBackupNode.mockResolvedValueOnce(
+      buildDetail({
+        id: "uat-root",
+        name: "UAT",
+        database_name: "",
+        odoo_version: "",
+        source_type: "root",
+        node_kind: "folder",
+        snapshot_type: null,
+        is_main_root: false,
+        note: "",
+        zip: null,
+      }),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText("目录节点")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "下载 Zip" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "复制恢复配置" })).not.toBeInTheDocument();
   });
 
   it("分支树支持折叠节点", async () => {
@@ -239,12 +343,12 @@ describe("DatabaseBackupsPage", () => {
     expect(await screen.findByText("生产主线数据库备份。")).toBeInTheDocument();
   });
 
-  it("切换到命名与升级规范标签后显示数据库命名规范", async () => {
+  it("切换到 UAT 快照规范标签后显示 UAT 树结构", async () => {
     renderPage();
 
-    fireEvent.click(await screen.findByRole("tab", { name: "命名与升级规范" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "UAT 快照规范" }));
 
-    expect(await screen.findByText("数据库命名规范")).toBeInTheDocument();
+    expect(await screen.findByText("UAT 树结构")).toBeInTheDocument();
   });
 
   it("创建根节点时要求上传 zip 文件", async () => {
@@ -335,11 +439,23 @@ describe("DatabaseBackupsPage", () => {
     });
   });
 
-  it("详情里保留节点 ID，但不再直接展示 zip 校验值", async () => {
+  it("详情里展示节点 ID 和 zip 校验值", async () => {
     renderPage();
 
     expect(await screen.findByText("root-1")).toBeInTheDocument();
-    expect(screen.queryByText("abc123def456")).not.toBeInTheDocument();
+    expect(screen.getByText("abc123def456")).toBeInTheDocument();
+  });
+
+  it("快照节点可以复制恢复配置", async () => {
+    renderPage();
+
+    await screen.findByText("生产主线数据库备份。");
+    fireEvent.click(screen.getByRole("button", { name: "复制恢复配置" }));
+
+    await waitFor(() => expect(apiMock.databaseBackupRestoreEnv).toHaveBeenCalledWith("root-1"));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      "ODOO_RESTORE_NODE_ID=root-1\nODOO_RESTORE_IF_EXISTS=overwrite\nODOO_RESTORE_NEUTRALIZE=false",
+    );
   });
 
   it("叶子节点可以从详情面板删除", async () => {
